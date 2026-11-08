@@ -2,259 +2,236 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Học AI Cùng Thầy Giáo Nguyễn Phong</title>
-  <meta name="description" content="Nâng cao kỹ năng số & Ứng dụng trí tuệ nhân tạo thực chiến cùng thầy giáo Nguyễn Phong.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Học AI cùng thầy giáo Nguyễn Phong</title>
+  <meta name="description" content="16 bài học video về ứng dụng trí tuệ nhân tạo trong công việc, kèm bài kiểm tra sau mỗi bài và thi hết môn.">
+  <meta name="theme-color" content="#0A2463">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%230A2463'/><circle cx='20' cy='44' r='6' fill='%23fff'/><circle cx='44' cy='20' r='6' fill='%23E8A317'/><path d='M20 44 C20 28 44 36 44 20' stroke='%23fff' stroke-width='4' fill='none'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css">
   <script src="config.js"></script>
 </head>
 <body>
-  <div id="apiWarn" class="api-warn d-none">⚠ Chưa cấu hình <b>API_URL</b> trong <b>config.js</b>. Hãy dán URL Web App (/exec) của Apps Script vào đó.</div>
+  <div id="apiWarn" class="api-warn" hidden>Chưa cấu hình API_URL trong config.js. Hãy dán URL Web App (/exec) của Apps Script vào đó.</div>
 
-  <!-- Banner Tiêu Đề -->
-  <header class="hero-banner mb-3">
-    <div class="container d-flex align-items-center justify-content-between flex-wrap gap-2">
-      <div class="d-flex align-items-center gap-3">
-        <img id="teacherImg" src="" alt="Thầy giáo Nguyễn Phong" class="teacher-img shadow">
-        <div>
-          <h3 class="fw-bold mb-1">🤖 HỌC AI CÙNG THẦY GIÁO NGUYỄN PHONG</h3>
-          <p class="mb-0 text-light opacity-75 small">Nâng cao kỹ năng số &amp; Ứng dụng trí tuệ nhân tạo thực chiến</p>
-        </div>
-      </div>
-      <div id="userHeaderPanel">
-        <button class="btn btn-warning fw-semibold shadow-sm" onclick="showLoginModal()">
-          <i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập học tập
-        </button>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Học AI cùng thầy giáo Nguyễn Phong — trang chủ">
+      <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="currentColor"/><circle cx="20" cy="44" r="6" fill="#fff"/><circle cx="44" cy="20" r="6" fill="#E8A317"/><path d="M20 44C20 28 44 36 44 20" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
+      <span class="brand-text"><b>Học AI</b><span>cùng thầy Nguyễn Phong</span></span>
+    </a>
+    <div class="topbar-actions">
+      <button id="adminBtn" class="btn btn-quiet" type="button" hidden onclick="openAdmin()">Quản trị</button>
+      <div id="userArea">
+        <button class="btn btn-primary btn-sm" type="button" onclick="focusLogin()">Đăng nhập</button>
       </div>
     </div>
   </header>
 
-  <div class="container pb-5">
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-      <div>
-        <button class="btn btn-danger fw-bold shadow-sm" onclick="startFinalExam()">
-          <i class="fa-solid fa-award me-1"></i> THI HẾT MÔN (30 CÂU)
-        </button>
+  <section id="welcome" class="welcome">
+    <div class="welcome-inner">
+      <div class="welcome-copy">
+        <h1>Làm chủ trí tuệ nhân tạo trong công việc mỗi ngày</h1>
+        <p class="lead">Mười sáu bài học video ngắn cùng thầy giáo Nguyễn Phong. Học theo tiến độ của bạn, làm bài kiểm tra sau mỗi bài và thi hết môn để ghi nhận kết quả.</p>
+        <form id="heroLogin" class="hero-login" onsubmit="event.preventDefault();loginFromHero()">
+          <label for="heroPhone">Số điện thoại của bạn</label>
+          <div class="hero-login-row">
+            <input id="heroPhone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="0905 123 456" required>
+            <button id="heroLoginBtn" class="btn btn-gold" type="submit">Bắt đầu học</button>
+          </div>
+          <p class="hint">Lần đầu học? Sau khi nhập số, hệ thống sẽ hỏi họ tên và đơn vị công tác.</p>
+        </form>
+        <ul class="facts">
+          <li><b id="factLessons">16</b> bài học video</li>
+          <li><b>10</b> câu kiểm tra mỗi bài</li>
+          <li><b>30</b> câu thi hết môn</li>
+        </ul>
       </div>
-      <!-- Khu vực quản trị: chỉ hiện khi đăng nhập quản trị (số + mã PIN) -->
-      <div id="adminControlsArea" class="gap-2">
-        <button class="btn btn-primary fw-semibold shadow-sm" onclick="openLeaderboard()">
-          <i class="fa-solid fa-trophy text-warning me-1"></i> Bảng xếp hạng học viên
-        </button>
-        <button id="btnMasterExport" class="btn btn-success fw-bold shadow-sm" onclick="exportMasterExcel()">
-          <i class="fa-solid fa-file-excel me-1"></i> XUẤT EXCEL TỔNG HỢP
-        </button>
-        <button id="btnAdminModal" class="btn btn-dark fw-bold shadow-sm" onclick="openAdminModal()">
-          <i class="fa-solid fa-user-shield me-1"></i> TRANG QUẢN TRỊ
-        </button>
+      <figure id="teacherFig" class="teacher" hidden>
+        <div class="teacher-photo"><img id="teacherImg" alt="Thầy giáo Nguyễn Phong"></div>
+        <figcaption>
+          <b>Thầy giáo Nguyễn Phong</b>
+          <span>Biến trí tuệ nhân tạo thành trợ thủ đắc lực trong công việc và cuộc sống.</span>
+        </figcaption>
+      </figure>
+      <div id="heroPath" class="hero-path" aria-label="Các bài học trong khóa">
+        <p class="hero-path-title">Lộ trình khóa học</p>
+        <ol id="heroPathList"></ol>
+        <p class="hero-path-end"><span class="node node-final" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.4 6.8 19.2l1-5.9L3.5 9.2l5.9-.8z" fill="currentColor"/></svg></span><b>Thi hết môn</b></p>
       </div>
     </div>
+  </section>
 
-    <div class="row g-3">
-      <!-- Cột trái: Danh mục bài học -->
-      <div class="col-lg-4" id="sidebarCol">
-        <div class="card shadow-sm border-0 h-100">
-          <div class="card-header bg-white py-2 px-3 fw-bold text-primary border-bottom d-flex align-items-center justify-content-between">
-            <div class="d-flex align-items-center">
-              <button class="toggle-menu-btn me-2" onclick="toggleSidebarMenu()" title="Thu gọn / Mở rộng menu"><i class="fa-solid fa-bars"></i></button>
-              <span>Danh mục bài học</span>
-            </div>
-            <span class="badge bg-primary" id="videoCountBadge">0 bài</span>
-          </div>
-          <div class="list-group list-group-flush" id="videoList" style="max-height: 560px; overflow-y: auto;">
-            <div class="p-3 text-center text-muted">Đang tải danh sách bài học...</div>
-          </div>
+  <main id="course" class="course">
+    <section class="stage" aria-label="Bài học đang xem">
+      <div class="player-frame" oncontextmenu="return false;">
+        <div id="player"></div>
+        <div id="lockScreen" class="lock-screen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="4.5" y="10" width="15" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          <p><b>Đăng nhập để xem video</b>Tiến độ học sẽ được lưu theo số điện thoại của bạn.</p>
+          <button class="btn btn-gold" type="button" onclick="focusLogin()">Đăng nhập</button>
         </div>
       </div>
 
-      <!-- Cột phải: Trình phát video -->
-      <div class="col-lg-8" id="contentCol">
-        <div class="card shadow-sm border-0 p-3">
-          <div class="d-flex align-items-center mb-2">
-            <button id="btnOpenSidebarQuick" class="toggle-menu-btn me-2" style="display:none;" onclick="toggleSidebarMenu()" title="Mở danh sách bài học"><i class="fa-solid fa-bars"></i></button>
-            <h5 id="currentVideoTitle" class="fw-bold mb-0 text-dark">Khóa học Trí tuệ Nhân tạo</h5>
-          </div>
+      <div class="lesson">
+        <p id="lessonMeta" class="lesson-meta">Đang tải bài học…</p>
+        <h2 id="lessonTitle">Khóa học trí tuệ nhân tạo</h2>
 
-          <div class="video-container mb-3" oncontextmenu="return false;">
-            <div id="player"></div>
-            <div class="player-shield"></div>
-            <div id="guestLockScreen" class="lock-overlay">
-              <i class="fa-solid fa-lock text-warning fa-3x mb-3"></i>
-              <h5 class="fw-bold">NỘI DUNG YÊU CẦU ĐĂNG NHẬP</h5>
-              <p class="text-secondary small mb-3">Vui lòng xác thực số điện thoại để bắt đầu học tập và theo dõi tiến độ cá nhân.</p>
-              <button class="btn btn-warning fw-bold px-4" onclick="showLoginModal()"><i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập ngay</button>
-            </div>
-          </div>
+        <div class="watch">
+          <div class="watch-bar" role="progressbar" aria-label="Đã xem" aria-valuemin="0" aria-valuemax="100"><span id="watchFill"></span></div>
+          <span id="videoTimer" class="watch-time">0:00</span>
+        </div>
+        <p id="watchNote" class="watch-note">Xem hết video để mở bài kiểm tra hoàn thành bài học.</p>
 
-          <div id="studyAlert" class="alert alert-info py-2 d-flex align-items-center justify-content-between">
-            <span id="studyAlertText"><i class="fa-solid fa-shield-halved me-1"></i> Xem trọn vẹn video để xuất hiện nút kiểm tra hoàn thành modul.</span>
-            <span id="videoTimer" class="badge bg-primary">00:00</span>
-          </div>
-
-          <div id="resumeNotice" class="alert alert-warning py-1 small mb-2" style="display:none;"></div>
-
-          <div id="moduleQuizTriggerArea" class="text-center my-3" style="display:none;">
-            <button class="btn btn-success btn-lg fw-bold shadow px-4 py-2" onclick="startModuleExam()">
-              <i class="fa-solid fa-file-signature me-2"></i> KIỂM TRA HOÀN THÀNH MODUL (10 CÂU)
-            </button>
-            <p class="text-muted small mt-2">Đạt từ 7/10 câu để hoàn thành bài học và mở khóa quyền xem lại tự do.</p>
-          </div>
+        <div class="lesson-actions">
+          <button id="btnModuleExam" class="btn btn-primary" type="button" onclick="startModuleExam()" disabled>Làm bài kiểm tra</button>
+          <button id="btnNext" class="btn btn-quiet" type="button" onclick="nextLesson()">Bài tiếp theo</button>
         </div>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <footer class="bg-dark text-white text-center py-4 mt-5">
-    <p class="mb-1 fw-bold">HỌC AI CÙNG THẦY GIÁO NGUYỄN PHONG</p>
-    <p class="mb-1 small"><a id="contactLink" class="link-warning" href="#"></a></p>
-    <p class="text-secondary small mt-1">Copyright © 2026 Nguyễn Phong. All rights reserved.</p>
+    <aside class="path" aria-label="Lộ trình học">
+      <div class="path-head">
+        <div class="ring" aria-hidden="true">
+          <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" class="ring-track"/><circle id="ringFill" cx="22" cy="22" r="19" class="ring-fill" stroke-dasharray="119.4" stroke-dashoffset="119.4"/></svg>
+        </div>
+        <div>
+          <h2>Lộ trình của bạn</h2>
+          <p id="pathSummary">16 bài học</p>
+        </div>
+      </div>
+      <input id="pathSearch" class="path-search" type="search" placeholder="Tìm bài học" oninput="renderPath()" aria-label="Tìm bài học">
+      <ol id="pathList" class="path-list"><li class="path-empty">Đang tải danh sách bài học…</li></ol>
+      <button class="path-final" type="button" onclick="startFinalExam()">
+        <span class="node node-final" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.4 6.8 19.2l1-5.9L3.5 9.2l5.9-.8z" fill="currentColor"/></svg></span>
+        <span><b>Thi hết môn</b><small>30 câu, đạt từ 20 câu đúng</small></span>
+      </button>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    <div>
+      <b>Học AI cùng thầy giáo Nguyễn Phong</b>
+      <p>Nâng cao kỹ năng số và ứng dụng trí tuệ nhân tạo thực chiến.</p>
+    </div>
+    <div class="footer-meta">
+      <a id="contactLink" href="#"></a>
+      <span>© 2026 Nguyễn Phong</span>
+    </div>
   </footer>
 
-  <!-- MODAL: BÀI THI -->
-  <div class="modal fade" id="quizModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-      <div class="modal-content">
-        <div class="modal-header bg-primary text-white" id="quizModalHeader">
-          <h5 class="modal-title fw-bold" id="quizModalTitle"><i class="fa-solid fa-graduation-cap me-2"></i> BÀI THI KIỂM TRA</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body bg-light">
-          <div class="alert alert-primary py-2 small d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <span>Tiêu đề: <b id="quizModalLessonTitle">...</b></span>
-            <span>Điều kiện đạt: <b class="badge bg-danger fs-6" id="quizModalPassCond">7/10 câu</b></span>
+  <!-- Đăng nhập / mã PIN / đăng ký -->
+  <dialog id="authDialog" class="sheet sheet-sm" aria-labelledby="authTitle">
+    <div class="sheet-head">
+      <h2 id="authTitle" tabindex="-1" autofocus>Đăng nhập học tập</h2>
+      <button class="icon-btn" type="button" aria-label="Đóng" onclick="closeDialog('authDialog')">✕</button>
+    </div>
+    <form id="stepPhone" class="sheet-body stack" onsubmit="event.preventDefault();verifyPhone()">
+      <label for="inputPhone">Số điện thoại</label>
+      <input type="tel" id="inputPhone" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="0905 123 456">
+      <button type="submit" class="btn btn-primary btn-block" id="btnPhoneNext">Tiếp tục</button>
+    </form>
+    <form id="stepAdminPin" class="sheet-body stack" hidden onsubmit="event.preventDefault();verifyAdminPin()">
+      <p class="notice">Đây là tài khoản quản trị. Nhập mã xác nhận để tiếp tục.</p>
+      <label for="inputAdminPin">Mã xác nhận</label>
+      <input type="password" id="inputAdminPin" autocomplete="current-password" inputmode="numeric">
+      <button type="submit" class="btn btn-primary btn-block" id="btnConfirmPin">Xác nhận</button>
+    </form>
+    <form id="stepRegister" class="sheet-body stack" hidden onsubmit="event.preventDefault();completeRegistration()">
+      <p class="notice">Số điện thoại <b id="regPhoneShow"></b> chưa có trong danh sách. Điền thông tin để tạo tài khoản học.</p>
+      <label for="regName">Họ và tên</label>
+      <input type="text" id="regName" maxlength="100" autocomplete="name" required>
+      <label for="regUnit">Đơn vị công tác</label>
+      <input type="text" id="regUnit" maxlength="200" autocomplete="organization" required>
+      <label for="regEmail">Email <span class="optional">(không bắt buộc)</span></label>
+      <input type="email" id="regEmail" maxlength="100" autocomplete="email">
+      <button type="submit" class="btn btn-primary btn-block" id="btnRegisterSubmit">Tạo tài khoản và học</button>
+    </form>
+  </dialog>
+
+  <!-- Bài thi -->
+  <dialog id="examDialog" class="sheet sheet-lg" aria-labelledby="examTitle">
+    <div class="sheet-head exam-head">
+      <div>
+        <h2 id="examTitle" tabindex="-1" autofocus>Bài kiểm tra</h2>
+        <p id="examSub" class="sheet-sub"></p>
+      </div>
+      <button class="icon-btn" type="button" aria-label="Đóng" onclick="closeDialog('examDialog')">✕</button>
+    </div>
+    <div class="sheet-body exam-body">
+      <div id="examResult" class="exam-result" hidden></div>
+      <div id="examQuestions"></div>
+    </div>
+    <div class="sheet-foot">
+      <span id="examProgress" class="exam-progress"></span>
+      <button type="button" class="btn btn-primary" id="btnSubmitExam" onclick="submitAnswers()">Nộp bài</button>
+    </div>
+  </dialog>
+
+  <!-- Bảng xếp hạng -->
+  <dialog id="leaderboardDialog" class="sheet sheet-sm" aria-labelledby="lbTitle">
+    <div class="sheet-head">
+      <h2 id="lbTitle" tabindex="-1" autofocus>Bảng xếp hạng</h2>
+      <button class="icon-btn" type="button" aria-label="Đóng" onclick="closeDialog('leaderboardDialog')">✕</button>
+    </div>
+    <ol id="leaderboardList" class="sheet-body leaderboard"></ol>
+  </dialog>
+
+  <!-- Quản trị -->
+  <dialog id="adminDialog" class="sheet sheet-xl" aria-labelledby="adminTitle">
+    <div class="sheet-head">
+      <h2 id="adminTitle" tabindex="-1" autofocus>Quản trị khóa học</h2>
+      <button class="icon-btn" type="button" aria-label="Đóng" onclick="closeDialog('adminDialog')">✕</button>
+    </div>
+    <div class="admin-bar">
+      <div class="tabs" role="tablist">
+        <button role="tab" class="tab" aria-selected="true" data-tab="results" onclick="adminTab('results')">Nhật ký thi</button>
+        <button role="tab" class="tab" aria-selected="false" data-tab="videos" onclick="adminTab('videos')">Bài học</button>
+        <button role="tab" class="tab" aria-selected="false" data-tab="users" onclick="adminTab('users')">Học viên</button>
+      </div>
+      <div class="admin-tools">
+        <button class="btn btn-quiet btn-sm" type="button" onclick="openLeaderboard()">Bảng xếp hạng</button>
+        <button id="btnMasterExport" class="btn btn-primary btn-sm" type="button" onclick="exportMasterExcel()">Xuất bảng điểm Excel</button>
+      </div>
+    </div>
+    <div class="sheet-body admin-body">
+      <div id="tab-results" class="tab-panel">
+        <input id="resultFilter" class="filter" type="search" placeholder="Lọc theo tên, số điện thoại, mã bài" oninput="renderAdminResults()">
+        <div class="table-wrap"><table>
+          <thead><tr><th>Học viên</th><th>Số điện thoại</th><th>Đơn vị</th><th>Loại</th><th>Bài</th><th>Lần</th><th>Đúng</th><th>Điểm</th><th>Kết quả</th><th>Thời gian</th></tr></thead>
+          <tbody id="adminResultsBody"></tbody>
+        </table></div>
+      </div>
+      <div id="tab-videos" class="tab-panel" hidden>
+        <form class="video-form" onsubmit="event.preventDefault();saveAdminVideo()">
+          <input type="hidden" id="adminVideoId">
+          <label>Chủ đề<input type="text" id="adminVideoCat"></label>
+          <label>Tên bài học<input type="text" id="adminVideoTitle" required></label>
+          <label>Link hoặc mã YouTube<input type="text" id="adminVideoKey" required></label>
+          <label class="narrow">Thứ tự<input type="number" id="adminVideoOrder" value="1"></label>
+          <div class="video-form-actions">
+            <button type="submit" class="btn btn-primary" id="btnAdminSave">Lưu bài học</button>
+            <span id="adminVideoEditing" class="editing-note"></span>
           </div>
-          <div id="examResultBanner" class="alert py-3 text-center mb-3" style="display:none;"></div>
-          <div id="quizQuestionsContainer"></div>
-        </div>
-        <div class="modal-footer bg-white">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
-          <button type="button" class="btn btn-success fw-bold px-4" id="btnSubmitQuizAnswers" onclick="submitAnswers()">
-            <i class="fa-solid fa-paper-plane me-1"></i> NỘP BÀI THI
-          </button>
-        </div>
+        </form>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Thứ tự</th><th>Mã</th><th>Chủ đề</th><th>Tên bài học</th><th>YouTube</th><th></th></tr></thead>
+          <tbody id="adminVideoBody"></tbody>
+        </table></div>
+      </div>
+      <div id="tab-users" class="tab-panel" hidden>
+        <p id="adminUserCount" class="muted"></p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Họ tên</th><th>Số điện thoại</th><th>Đơn vị</th><th>Email</th><th>Ngày đăng ký</th><th>Thời gian học (phút)</th></tr></thead>
+          <tbody id="adminUserBody"></tbody>
+        </table></div>
       </div>
     </div>
-  </div>
+  </dialog>
 
-  <!-- MODAL: Đăng nhập / Mã PIN quản trị / Đăng ký -->
-  <div class="modal fade" id="authModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header bg-primary text-white">
-          <h5 class="modal-title"><i class="fa-solid fa-id-card me-2"></i> Xác thực Học viên</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <form id="stepPhone" onsubmit="event.preventDefault();verifyPhone()">
-            <label class="form-label fw-bold" for="inputPhone">Nhập số điện thoại của bạn:</label>
-            <input type="tel" id="inputPhone" class="form-control mb-3" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="Nhập số điện thoại...">
-            <button type="submit" class="btn btn-primary w-100 fw-semibold" id="btnPhoneNext">Tiếp tục</button>
-          </form>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-          <form id="stepAdminPin" style="display:none;" onsubmit="event.preventDefault();verifyAdminPin()">
-            <div class="alert alert-danger py-2 small mb-3"><i class="fa-solid fa-shield-halved me-1"></i> Phát hiện tài khoản Quản trị. Vui lòng nhập mã xác nhận bảo mật:</div>
-            <label class="form-label fw-bold" for="inputAdminPin">Mã xác nhận bảo mật (PIN):</label>
-            <input type="password" id="inputAdminPin" class="form-control mb-3" autocomplete="current-password" placeholder="••••••">
-            <button type="submit" class="btn btn-danger w-100 fw-bold" id="btnConfirmPin">Xác thực Quản trị</button>
-          </form>
-
-          <form id="stepRegister" style="display:none;" onsubmit="event.preventDefault();completeRegistration()">
-            <div class="alert alert-warning py-2 small mb-3">Số điện thoại mới. Xin vui lòng cung cấp thông tin để lưu tài khoản:</div>
-            <div class="mb-2">
-              <label class="form-label fw-bold" for="regName">Họ và tên <span class="text-danger">*</span>:</label>
-              <input type="text" id="regName" class="form-control" maxlength="100" placeholder="Nhập họ và tên...">
-            </div>
-            <div class="mb-2">
-              <label class="form-label fw-bold" for="regUnit">Đơn vị / Cơ quan <span class="text-danger">*</span>:</label>
-              <input type="text" id="regUnit" class="form-control" maxlength="200" placeholder="Nhập đơn vị công tác...">
-            </div>
-            <div class="mb-3">
-              <label class="form-label" for="regEmail">Email (Tùy chọn):</label>
-              <input type="email" id="regEmail" class="form-control" maxlength="100" placeholder="name@example.com">
-            </div>
-            <button type="submit" class="btn btn-success w-100 fw-bold" id="btnRegisterSubmit">Lưu thông tin &amp; Bắt đầu học</button>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: Bảng xếp hạng -->
-  <div class="modal fade" id="leaderboardModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header bg-warning">
-          <h5 class="modal-title fw-bold text-dark"><i class="fa-solid fa-trophy me-2"></i> BẢNG XẾP HẠNG HỌC VIÊN</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body p-0">
-          <table class="table table-striped mb-0 text-center">
-            <thead class="table-light"><tr><th>Hạng</th><th>Học viên</th><th>Đơn vị</th><th>Số bài xong</th></tr></thead>
-            <tbody id="leaderboardBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODAL: Quản trị -->
-  <div class="modal fade" id="adminModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-      <div class="modal-content">
-        <div class="modal-header bg-dark text-white">
-          <h5 class="modal-title"><i class="fa-solid fa-shield-halved me-2"></i> Quản Trị Hệ Thống - Thầy Nguyễn Phong</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <ul class="nav nav-tabs mb-3" role="tablist">
-            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabAdminResults"><i class="fa-solid fa-square-poll-vertical me-1"></i> Nhật ký thi Modul &amp; Thi hết môn</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdminVideos"><i class="fa-solid fa-video me-1"></i> Quản lý Bài học</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdminUsers"><i class="fa-solid fa-users me-1"></i> Danh sách Học viên</button></li>
-          </ul>
-          <div class="tab-content">
-            <div class="tab-pane fade show active" id="tabAdminResults">
-              <input id="resultFilter" class="form-control form-control-sm mb-2" placeholder="Lọc theo tên, số điện thoại, mã video..." oninput="renderAdminResults()">
-              <div class="table-responsive">
-                <table class="table table-bordered table-striped table-sm align-middle text-center">
-                  <thead class="table-dark"><tr><th>Học viên</th><th>Số ĐT</th><th>Đơn vị</th><th>Loại thi</th><th>Mã Video</th><th>Lần</th><th>Đúng</th><th>Điểm</th><th>Kết quả</th><th>Thời gian</th></tr></thead>
-                  <tbody id="adminResultsTableBody"></tbody>
-                </table>
-              </div>
-            </div>
-            <div class="tab-pane fade" id="tabAdminVideos">
-              <form class="row g-2 mb-3 bg-light p-3 rounded" onsubmit="event.preventDefault();saveAdminVideo()">
-                <input type="hidden" id="adminVideoId">
-                <div class="col-md-3"><input type="text" id="adminVideoCat" class="form-control" placeholder="Chủ đề (Topic)"></div>
-                <div class="col-md-4"><input type="text" id="adminVideoTitle" class="form-control" placeholder="Tên bài học"></div>
-                <div class="col-md-3"><input type="text" id="adminVideoKey" class="form-control" placeholder="YouTube ID hoặc link"></div>
-                <div class="col-md-1"><input type="number" id="adminVideoOrder" class="form-control" placeholder="STT" value="1"></div>
-                <div class="col-md-1"><button type="submit" class="btn btn-primary w-100 fw-bold" id="btnAdminSave">Lưu</button></div>
-                <div class="col-12 small text-muted" id="adminVideoEditing"></div>
-              </form>
-              <table class="table table-bordered table-sm align-middle">
-                <thead class="table-light"><tr><th>STT</th><th>Mã</th><th>Chủ đề</th><th>Tên bài học</th><th>YouTube ID</th><th>Tác vụ</th></tr></thead>
-                <tbody id="adminVideoListTable"></tbody>
-              </table>
-            </div>
-            <div class="tab-pane fade" id="tabAdminUsers">
-              <div class="small text-muted mb-2" id="adminUserCount"></div>
-              <div class="table-responsive">
-                <table class="table table-bordered table-sm align-middle">
-                  <thead class="table-light"><tr><th>Họ tên</th><th>Số ĐT</th><th>Đơn vị</th><th>Email</th><th>Ngày đăng ký</th><th>Thời gian (phút)</th></tr></thead>
-                  <tbody id="adminUserListTable"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="assets/app.js"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
 </body>
