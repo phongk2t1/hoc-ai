@@ -23,7 +23,7 @@ body { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verda
   transition: all 0.2s;
 }
 .video-item:hover { background-color: #f1f5f9; }
-.video-item.active { background-color: #dbeafe !important; font-weight: bold; border-left: 4px solid #2563eb; }
+.video-item.active { background-color: #dbeafe !important; color: #1e3a8a !important; font-weight: bold; border-left: 4px solid #2563eb; }
 
 .video-container {
   position: relative;
