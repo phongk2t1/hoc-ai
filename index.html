@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Học AI mỗi ngày cùng thầy giáo Nguyễn Phong</title>
+<meta name="description" content="Chương trình huấn luyện kỹ năng Trí tuệ Nhân tạo thực chiến cùng thầy giáo Nguyễn Phong.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+<link rel="stylesheet" href="assets/style.css">
+<script src="config.js"></script>
+<script src="https://www.youtube.com/iframe_api" async></script>
+</head>
+<body>
+<div id="apiWarn" class="apiWarn hidden">⚠ Chưa cấu hình API_URL trong <b>config.js</b>. Hãy dán URL Web App của Apps Script vào đó.</div>
+
+<header class="topbar">
+  <div class="brand"><div class="logo">♧</div><span>AI Master · Thầy Nguyễn Phong</span></div>
+  <nav class="nav">
+    <span class="activeNav" onclick="go('course')">Lộ Trình Bài Học</span>
+    <span onclick="showLeaderboard()">🏆 Bảng Xếp Hạng</span>
+    <span onclick="showHistory()">Lịch Sử Học Tập</span>
+    <span id="adminNav" class="gold hidden" onclick="showAdmin()">🛡 Quản Trị Khóa Học</span>
+    <span id="exportNav" class="green hidden" onclick="exportData()">▤ Xuất Excel</span>
+  </nav>
+  <div id="userPill" class="userpill">Chưa đăng nhập · <button onclick="scrollLogin()">Đăng nhập</button></div>
+</header>
+
+<main>
+<section id="home" class="wrap hero">
+  <div>
+    <div class="eyebrow">✧ HỌC AI MỖI NGÀY　·　Lộ Trình Thực Chiến 2026　·　Học theo tiến độ cá nhân</div>
+    <h1>HỌC AI CÙNG THẦY GIÁO<br><span class="gradient">NGUYỄN PHONG</span></h1>
+    <p class="lead">Chương trình huấn luyện kỹ năng Trí tuệ Nhân tạo thế hệ mới. Học theo tiến độ, làm bài kiểm tra ngắn sau mỗi video để ghi nhận kết quả, tích lũy điểm và thăng hạng trên Bảng Xếp Hạng học viên.</p>
+    <div class="stats">
+      <div class="stat"><label>▱ Tiến Độ</label><strong id="heroProgress">Học mỗi ngày</strong><small id="heroLessons">Lộ trình thực chiến</small></div>
+      <div class="stat"><label class="gold">♜ Điểm XP</label><strong class="gold" id="heroXP">+100</strong><small>XP / bài hoàn thành</small></div>
+      <div class="stat"><label>♙ Danh Hiệu</label><strong style="font-size:18px;color:#9db2ff">AI Master</strong><small>Cùng học và thực hành</small></div>
+      <div class="stat"><label class="green">♢ Bảo Mật</label><strong class="green" style="font-size:18px">Theo tiến độ</strong><small>Kiểm tra sau video</small></div>
+    </div>
+    <div id="loginArea">
+      <div class="loginbar"><button onclick="scrollLogin()">Bắt đầu học miễn phí →</button><span class="muted">Xem trang chủ công khai · Đăng nhập để lưu tiến độ</span></div>
+      <form id="phoneLoginBox" class="loginbar" style="max-width:640px" onsubmit="event.preventDefault();loginByPhone()">
+        <input id="phoneLogin" class="field" style="max-width:280px;margin:0" type="tel" inputmode="numeric" autocomplete="tel" maxlength="12" placeholder="Nhập số điện thoại đã đăng ký">
+        <input id="adminPass" class="field hidden" style="max-width:220px;margin:0" type="password" autocomplete="current-password" placeholder="Mật khẩu quản trị">
+        <button id="loginBtn" type="submit">Đăng nhập học tập →</button>
+      </form>
+      <div class="muted" style="margin-top:9px;font-size:13px">Dùng số điện thoại đã được quản trị viên đăng ký trong danh sách học viên.</div>
+    </div>
+    <div id="loginMsg" class="muted" style="margin-top:10px"></div>
+  </div>
+  <div class="heroPhoto">
+    <img id="teacherPhoto" class="hidden" alt="Thầy giáo Nguyễn Phong">
+    <div id="photoPlaceholder" class="photoPlaceholder">✦</div>
+    <div class="photoCaption"><small>GIẢNG VIÊN HƯỚNG DẪN</small><h3>Thầy Giáo Nguyễn Phong</h3><span class="muted">“Biến Trí Tuệ Nhân Tạo thành trợ thủ đắc lực trong công việc và cuộc sống mỗi ngày.”</span></div>
+  </div>
+</section>
+
+<section id="course" class="wrap section hidden">
+  <div class="flex" style="margin-bottom:20px">
+    <div><div class="eyebrow">AI MASTER 2026</div><h2>Lộ Trình Học Tập</h2><p class="muted">Chọn bất kỳ bài học nào. Bài chưa hoàn thành sẽ hạn chế tua; bài đã hoàn thành có thể xem lại và tua tự do.</p></div>
+    <div id="courseStats" class="tag">0 bài</div>
+  </div>
+  <div class="mainCourse">
+    <aside class="panel">
+      <div class="panelHead"><h2>♧ Lộ Trình Học Tập</h2><span id="sideProgress" class="green">0%</span></div>
+      <div style="padding:14px">
+        <input id="searchLessons" class="field" placeholder="⌕ Tìm kiếm bài giảng AI..." oninput="renderLessons()" style="margin:0">
+        <div class="flex" style="margin-top:12px"><span class="muted" id="lessonCounts">Tất cả bài học</span><span class="muted" id="completedCount">0 đã xong</span></div>
+      </div>
+      <div id="lessonList" class="list"></div>
+    </aside>
+    <section class="panel courseContent">
+      <div id="lessonIntro" class="lessonIntro"><div class="eyebrow">CHƯƠNG TRÌNH HỌC AI</div><h2>Chào mừng bạn đến với AI Master</h2><p>Nhập số điện thoại đã đăng ký để bắt đầu học và lưu lịch sử cá nhân.</p></div>
+      <div class="player" id="playerWrap"><div id="player"><div class="empty">Đăng nhập và chọn một bài học để bắt đầu.</div></div></div>
+      <div id="watchCard" class="watchCard hidden">
+        <div class="flex"><span id="watchStatus" class="green">◈ Đang theo dõi tiến độ</span><span id="watchTime" class="muted">00:00 / 00:00</span></div>
+        <div class="progress"><div id="watchBar"></div></div>
+        <div class="flex"><span class="muted" id="watchMessage"></span>
+          <div><button class="secondary" onclick="loadQuiz()">Làm bài kiểm tra</button> <button id="nextBtn" onclick="nextVideo()">Bài tiếp theo ›</button></div>
+        </div>
+      </div>
+      <div id="quizArea" class="quiz hidden"></div>
+    </section>
+  </div>
+</section>
+
+<section id="dashboard" class="wrap section hidden">
+  <div class="panel">
+    <div class="panelHead"><h2 id="dashboardTitle">Bảng thông tin</h2><button class="secondary" onclick="go('course')">Quay lại lộ trình</button></div>
+    <div id="dashboardBody" class="adminTable"></div>
+  </div>
+</section>
+
+<section id="admin" class="wrap section hidden">
+  <div class="flex">
+    <div><div class="eyebrow">ADMIN CONTROL CENTER</div><h2>Quản Trị Khóa Học</h2><p class="muted">Chỉ tài khoản quản trị (số điện thoại + mật khẩu) mới truy cập được khu vực này.</p></div>
+    <button onclick="exportData()" class="green">▤ Xuất Excel</button>
+  </div>
+  <div class="panel">
+    <div class="panelHead"><div class="adminTabs" id="adminTabs">
+      <button data-tab="videos" onclick="adminTab('videos')">Quản lý bài học</button>
+      <button data-tab="quizzes" class="secondary" onclick="adminTab('quizzes')">Câu hỏi kiểm tra</button>
+      <button data-tab="students" class="secondary" onclick="adminTab('students')">Quản lý học viên</button>
+      <button data-tab="history" class="secondary" onclick="adminTab('history')">Lịch sử học tập</button>
+    </div></div>
+    <div id="adminContent"></div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="footerInner">
+    <div class="teacherBlock">
+      <img id="teacherThumb" class="teacherThumb hidden" alt="Thầy giáo Nguyễn Phong">
+      <div>
+        <div class="eyebrow">✧ TÁC GIẢ & GIẢNG VIÊN KHÓA HỌC</div>
+        <h2 style="margin:8px 0">Thầy Giáo Nguyễn Phong</h2>
+        <p class="muted" style="line-height:1.7">Chuyên gia đào tạo và huấn luyện Trí tuệ Nhân tạo thực chiến. Sứ mệnh giúp người học làm chủ công cụ AI thế hệ mới, tối ưu hóa năng suất công việc và nâng cao hiệu quả.</p>
+        <a id="contactLink" style="color:var(--cyan)" href="#">✉</a> <span class="muted">· Hỗ trợ học tập</span>
+      </div>
+    </div>
+    <div class="panel" style="padding:20px;max-width:420px"><strong>♢ Tiêu Chuẩn Học Tập 2026</strong><p class="muted" style="line-height:1.7">Học theo tiến độ cá nhân, bài kiểm tra kiến thức sau mỗi video và ghi nhận lịch sử học tập để theo dõi quá trình tiến bộ.</p></div>
+  </div>
+  <div class="footerInner" style="border-top:1px solid #18243a;margin-top:30px;padding-top:25px">
+    <span>© 2026 Thầy Giáo Nguyễn Phong. All rights reserved. Nền tảng học AI mỗi ngày.</span>
+    <span>Bảo mật dữ liệu học viên　·　Xuất báo cáo Excel　·　Phiên bản 2026</span>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
