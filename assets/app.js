@@ -6,6 +6,11 @@ const LS_TOKEN = 'hocai_token';
 const LS_PHONE = 'study_user_phone';
 const ICON = {
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>',
+  vol: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  muted: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  full: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   logout: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
 
@@ -241,6 +246,9 @@ function selectVideo(video, initial) {
 
   if (!currentUser) { applyLockState(); return; }
   if (!video.youtubeId) { toast('Bài học này chưa có video.', true); return; }
+  $('playerPoster').style.backgroundImage = 'url("https://i.ytimg.com/vi/' + encodeURIComponent(video.youtubeId) + '/hqdefault.jpg")';
+  $('playerControls').hidden = false;
+  setPlayingState(-1);
   if (isPlayerReady) player.loadVideoById({ videoId: video.youtubeId, startSeconds: resumeSec });
   else pendingVideo = { id: video.youtubeId, start: resumeSec };
   startProgressLock();
@@ -279,7 +287,7 @@ function setWatch(cur, dur) {
 function onYouTubeIframeAPIReady() {
   player = new YT.Player('player', {
     height: '100%', width: '100%', videoId: '',
-    playerVars: { playsinline: 1, rel: 0, modestbranding: 1, controls: 1, origin: location.origin },
+    playerVars: { playsinline: 1, rel: 0, modestbranding: 1, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, cc_load_policy: 0, origin: location.origin },
     events: {
       onReady: () => {
         isPlayerReady = true;
@@ -302,6 +310,7 @@ function startProgressLock() {
       maxTimeViewed = Math.max(maxTimeViewed, cur);
     } else maxTimeViewed = Math.max(maxTimeViewed, cur);
     setWatch(cur, dur);
+    updateControls(cur, dur);
     if ($('btnModuleExam').disabled && watchedEnough()) updateExamButton();
   }, 500);
 }
@@ -321,6 +330,7 @@ function saveProgressNow(playing) {
 }
 
 function onPlayerStateChange(ev) {
+  setPlayingState(ev.data);
   if (ev.data === YT.PlayerState.PAUSED) saveProgressNow(false);
   if (ev.data === YT.PlayerState.ENDED) {
     saveProgressNow(false);
@@ -330,6 +340,79 @@ function onPlayerStateChange(ev) {
     if (currentVideo && !currentVideo.completed) toast('Bạn đã xem hết video. Hãy làm bài kiểm tra để hoàn thành bài học.');
   }
 }
+
+/* ---------- Trình phát riêng (ẩn giao diện YouTube) ---------- */
+
+function setPlayingState(state) {
+  const f = $('playerFrame');
+  const playing = state === 1, buffering = state === 3;
+  f.classList.toggle('is-playing', playing);
+  f.classList.toggle('is-buffering', buffering);
+  $('ctlPlay').innerHTML = playing || buffering ? ICON.pause : ICON.play;
+  $('ctlPlay').setAttribute('aria-label', playing ? 'Tạm dừng' : 'Phát');
+  if (state === 0) setTimeout(() => { try { player.seekTo(0, true); player.pauseVideo(); } catch (e) {} }, 400); // xem hết: không để YouTube hiện video gợi ý
+  wakeControls();
+}
+
+function togglePlay() {
+  if (!currentUser || !player || typeof player.getPlayerState !== 'function') return;
+  const st = player.getPlayerState();
+  if (st === 1 || st === 3) player.pauseVideo(); else player.playVideo();
+}
+
+function seekFromBar(v) {
+  if (!player || !videoDuration) return;
+  let t = (Number(v) / 1000) * videoDuration;
+  if (!canSkip() && t > maxTimeViewed) { t = maxTimeViewed; toast('Chỉ tua đến đoạn bạn đã xem. Hoàn thành bài kiểm tra để tua tự do.'); }
+  player.seekTo(t, true);
+  updateControls(t, videoDuration);
+}
+
+function updateControls(cur, dur) {
+  if (!dur) return;
+  const seek = $('ctlSeek');
+  if (document.activeElement !== seek) seek.value = String(Math.round((cur / dur) * 1000));
+  $('ctlPlayed').style.width = Math.min(100, (cur / dur) * 100) + '%';
+  $('ctlWatched').style.width = (canSkip() ? 100 : Math.min(100, (maxTimeViewed / dur) * 100)) + '%';
+  $('ctlTime').textContent = fmt(cur);
+  $('ctlDur').textContent = fmt(dur);
+}
+
+function toggleMute() {
+  if (!player || typeof player.isMuted !== 'function') return;
+  if (player.isMuted()) player.unMute(); else player.mute();
+  setTimeout(() => { $('ctlMute').innerHTML = player.isMuted() ? ICON.muted : ICON.vol; }, 50);
+}
+
+function setSpeed(v) { if (player && player.setPlaybackRate) player.setPlaybackRate(Number(v)); }
+
+function toggleFullscreen() {
+  const f = $('playerFrame');
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else if (f.requestFullscreen) f.requestFullscreen();
+  else if (f.webkitRequestFullscreen) f.webkitRequestFullscreen();
+}
+
+let idleTimer = null;
+function wakeControls() {
+  const f = $('playerFrame');
+  f.classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => f.classList.add('idle'), 2500);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  $('ctlPlay').innerHTML = ICON.play; $('ctlMute').innerHTML = ICON.vol; $('ctlFull').innerHTML = ICON.full;
+  if (!(document.fullscreenEnabled || document.webkitFullscreenEnabled)) $('ctlFull').hidden = true;
+  const f = $('playerFrame');
+  ['mousemove', 'touchstart', 'focusin'].forEach(e => f.addEventListener(e, wakeControls, { passive: true }));
+  document.addEventListener('keydown', e => {
+    if (!currentUser || document.querySelector('dialog[open]')) return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || (tag === 'button' && e.target.id !== 'playerShield')) return;
+    if (e.code === 'Space' || e.key === 'k') { e.preventDefault(); togglePlay(); }
+  });
+});
 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveProgressNow(false); });
 

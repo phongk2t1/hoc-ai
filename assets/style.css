@@ -164,9 +164,54 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: relative; aspect-ratio: 16 / 9; border-radius: 20px; overflow: hidden;
   background: #050C1F; box-shadow: var(--shadow-player);
 }
-.player-frame iframe, .player-frame #player { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.player-frame iframe, .player-frame #player { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+/* Trình phát riêng: chặn thao tác trực tiếp lên khung YouTube */
+.player-shield { position: absolute; inset: 0; z-index: 1; border: 0; padding: 0; background: transparent; cursor: pointer; }
+.player-shield:focus-visible { outline-offset: -4px; }
+.player-poster {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  display: grid; place-items: center;
+  background: #050C1F center / cover no-repeat;
+  transition: opacity .25s ease;
+}
+.player-poster::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5, 12, 31, .35), rgba(5, 12, 31, .65)); }
+.poster-play {
+  position: relative; width: 76px; height: 76px; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(255, 255, 255, .95); color: var(--navy);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .35);
+}
+.poster-play svg { width: 32px; height: 32px; margin-left: 4px; }
+.player-frame.is-playing .player-poster { opacity: 0; }
+.player-frame.is-buffering .player-poster { opacity: 0; }
+
+.player-controls {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  padding: 28px 14px 12px;
+  background: linear-gradient(180deg, transparent, rgba(5, 12, 31, .85));
+  color: #fff; transition: opacity .25s ease;
+}
+.player-frame.is-playing.idle .player-controls { opacity: 0; }
+.player-frame.is-playing.idle { cursor: none; }
+.ctl-btn { width: 36px; height: 36px; flex-shrink: 0; border: 0; border-radius: 10px; background: transparent; color: #fff; cursor: pointer; display: grid; place-items: center; }
+.ctl-btn:hover { background: rgba(255, 255, 255, .14); }
+.ctl-btn svg { width: 22px; height: 22px; }
+.ctl-time { font-size: 13px; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .9); min-width: 38px; text-align: center; }
+.ctl-seek { position: relative; flex: 1; height: 24px; display: flex; align-items: center; }
+.ctl-seek-track { position: absolute; left: 0; right: 0; height: 5px; border-radius: 99px; background: rgba(255, 255, 255, .22); overflow: hidden; }
+.ctl-watched { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255, 255, 255, .38); }
+.ctl-played { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--gold); }
+.ctl-seek input { position: relative; width: 100%; height: 24px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+.ctl-seek input::-webkit-slider-runnable-track { height: 24px; background: transparent; }
+.ctl-seek input::-moz-range-track { height: 24px; background: transparent; }
+.ctl-seek input::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: 5px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); }
+.ctl-seek input::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #fff; }
+.ctl-speed { height: 32px; padding: 0 6px; border: 1px solid rgba(255, 255, 255, .3); border-radius: 8px; background: rgba(5, 12, 31, .4); color: #fff; font-size: 13px; cursor: pointer; }
+.ctl-speed option { color: var(--ink); }
+.player-frame:fullscreen { border-radius: 0; aspect-ratio: auto; width: 100%; height: 100%; }
+.player-frame:-webkit-full-screen { border-radius: 0; width: 100%; height: 100%; }
 .lock-screen {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; inset: 0; z-index: 3;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
   padding: 24px; text-align: center; color: #fff;
   background: radial-gradient(circle at 50% 40%, #16357F 0%, #071534 70%);
@@ -405,6 +450,9 @@ code { font-size: 13px; background: var(--paper); padding: 2px 6px; border-radiu
   .admin-bar { padding: 10px 16px; }
   .video-form { grid-template-columns: 1fr; }
   .exam-score { font-size: 32px; }
+  .player-controls { gap: 4px; padding: 20px 8px 6px; }
+  .ctl-speed, #ctlDur { display: none; }
+  .poster-play { width: 60px; height: 60px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

@@ -65,8 +65,26 @@
 
   <main id="course" class="course">
     <section class="stage" aria-label="Bài học đang xem">
-      <div class="player-frame" oncontextmenu="return false;">
+      <div id="playerFrame" class="player-frame" oncontextmenu="return false;">
         <div id="player"></div>
+        <button id="playerShield" class="player-shield" type="button" aria-label="Phát hoặc tạm dừng video" onclick="togglePlay()"></button>
+        <div id="playerPoster" class="player-poster" aria-hidden="true">
+          <span class="poster-play"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></span>
+        </div>
+        <div id="playerControls" class="player-controls" hidden>
+          <button id="ctlPlay" class="ctl-btn" type="button" aria-label="Phát" onclick="togglePlay()"></button>
+          <span id="ctlTime" class="ctl-time">0:00</span>
+          <div class="ctl-seek">
+            <div class="ctl-seek-track"><span id="ctlWatched" class="ctl-watched"></span><span id="ctlPlayed" class="ctl-played"></span></div>
+            <input id="ctlSeek" type="range" min="0" max="1000" value="0" step="1" aria-label="Vị trí video" oninput="seekFromBar(this.value)">
+          </div>
+          <span id="ctlDur" class="ctl-time">0:00</span>
+          <button id="ctlMute" class="ctl-btn" type="button" aria-label="Tắt tiếng" onclick="toggleMute()"></button>
+          <select id="ctlSpeed" class="ctl-speed" aria-label="Tốc độ phát" onchange="setSpeed(this.value)">
+            <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+          </select>
+          <button id="ctlFull" class="ctl-btn" type="button" aria-label="Toàn màn hình" onclick="toggleFullscreen()"></button>
+        </div>
         <div id="lockScreen" class="lock-screen">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="4.5" y="10" width="15" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
           <p><b>Đăng nhập để xem video</b>Tiến độ học sẽ được lưu theo số điện thoại của bạn.</p>
