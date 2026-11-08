@@ -27,6 +27,10 @@ jobs:
           mkdir -p _site
           cp -r index.html config.js assets _site/
           touch _site/.nojekyll
+          # Gắn mã phiên bản để trình duyệt luôn tải tệp mới sau mỗi lần cập nhật
+          V="${GITHUB_SHA::7}"
+          sed -i -e "s#config.js\"#config.js?v=$V\"#" -e "s#assets/app.js\"#assets/app.js?v=$V\"#" -e "s#assets/style.css\"#assets/style.css?v=$V\"#" _site/index.html
+          grep -n "?v=" _site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
