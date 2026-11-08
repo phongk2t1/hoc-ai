@@ -1,132 +1,261 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Học AI mỗi ngày cùng thầy giáo Nguyễn Phong</title>
-<meta name="description" content="Chương trình huấn luyện kỹ năng Trí tuệ Nhân tạo thực chiến cùng thầy giáo Nguyễn Phong.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
-<link rel="stylesheet" href="assets/style.css">
-<script src="config.js"></script>
-<script src="https://www.youtube.com/iframe_api" async></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Học AI Cùng Thầy Giáo Nguyễn Phong</title>
+  <meta name="description" content="Nâng cao kỹ năng số & Ứng dụng trí tuệ nhân tạo thực chiến cùng thầy giáo Nguyễn Phong.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="config.js"></script>
 </head>
 <body>
-<div id="apiWarn" class="apiWarn hidden">⚠ Chưa cấu hình API_URL trong <b>config.js</b>. Hãy dán URL Web App của Apps Script vào đó.</div>
+  <div id="apiWarn" class="api-warn d-none">⚠ Chưa cấu hình <b>API_URL</b> trong <b>config.js</b>. Hãy dán URL Web App (/exec) của Apps Script vào đó.</div>
 
-<header class="topbar">
-  <div class="brand"><div class="logo">♧</div><span>AI Master · Thầy Nguyễn Phong</span></div>
-  <nav class="nav">
-    <span class="activeNav" onclick="go('course')">Lộ Trình Bài Học</span>
-    <span onclick="showLeaderboard()">🏆 Bảng Xếp Hạng</span>
-    <span onclick="showHistory()">Lịch Sử Học Tập</span>
-    <span id="adminNav" class="gold hidden" onclick="showAdmin()">🛡 Quản Trị Khóa Học</span>
-    <span id="exportNav" class="green hidden" onclick="exportData()">▤ Xuất Excel</span>
-  </nav>
-  <div id="userPill" class="userpill">Chưa đăng nhập · <button onclick="scrollLogin()">Đăng nhập</button></div>
-</header>
-
-<main>
-<section id="home" class="wrap hero">
-  <div>
-    <div class="eyebrow">✧ HỌC AI MỖI NGÀY　·　Lộ Trình Thực Chiến 2026　·　Học theo tiến độ cá nhân</div>
-    <h1>HỌC AI CÙNG THẦY GIÁO<br><span class="gradient">NGUYỄN PHONG</span></h1>
-    <p class="lead">Chương trình huấn luyện kỹ năng Trí tuệ Nhân tạo thế hệ mới. Học theo tiến độ, làm bài kiểm tra ngắn sau mỗi video để ghi nhận kết quả, tích lũy điểm và thăng hạng trên Bảng Xếp Hạng học viên.</p>
-    <div class="stats">
-      <div class="stat"><label>▱ Tiến Độ</label><strong id="heroProgress">Học mỗi ngày</strong><small id="heroLessons">Lộ trình thực chiến</small></div>
-      <div class="stat"><label class="gold">♜ Điểm XP</label><strong class="gold" id="heroXP">+100</strong><small>XP / bài hoàn thành</small></div>
-      <div class="stat"><label>♙ Danh Hiệu</label><strong style="font-size:18px;color:#9db2ff">AI Master</strong><small>Cùng học và thực hành</small></div>
-      <div class="stat"><label class="green">♢ Bảo Mật</label><strong class="green" style="font-size:18px">Theo tiến độ</strong><small>Kiểm tra sau video</small></div>
-    </div>
-    <div id="loginArea">
-      <div class="loginbar"><button onclick="scrollLogin()">Bắt đầu học miễn phí →</button><span class="muted">Xem trang chủ công khai · Đăng nhập để lưu tiến độ</span></div>
-      <form id="phoneLoginBox" class="loginbar" style="max-width:640px" onsubmit="event.preventDefault();loginByPhone()">
-        <input id="phoneLogin" class="field" style="max-width:280px;margin:0" type="tel" inputmode="numeric" autocomplete="tel" maxlength="12" placeholder="Nhập số điện thoại đã đăng ký">
-        <input id="adminPass" class="field hidden" style="max-width:220px;margin:0" type="password" autocomplete="current-password" placeholder="Mật khẩu quản trị">
-        <button id="loginBtn" type="submit">Đăng nhập học tập →</button>
-      </form>
-      <div class="muted" style="margin-top:9px;font-size:13px">Dùng số điện thoại đã được quản trị viên đăng ký trong danh sách học viên.</div>
-    </div>
-    <div id="loginMsg" class="muted" style="margin-top:10px"></div>
-  </div>
-  <div class="heroPhoto">
-    <img id="teacherPhoto" class="hidden" alt="Thầy giáo Nguyễn Phong">
-    <div id="photoPlaceholder" class="photoPlaceholder">✦</div>
-    <div class="photoCaption"><small>GIẢNG VIÊN HƯỚNG DẪN</small><h3>Thầy Giáo Nguyễn Phong</h3><span class="muted">“Biến Trí Tuệ Nhân Tạo thành trợ thủ đắc lực trong công việc và cuộc sống mỗi ngày.”</span></div>
-  </div>
-</section>
-
-<section id="course" class="wrap section hidden">
-  <div class="flex" style="margin-bottom:20px">
-    <div><div class="eyebrow">AI MASTER 2026</div><h2>Lộ Trình Học Tập</h2><p class="muted">Chọn bất kỳ bài học nào. Bài chưa hoàn thành sẽ hạn chế tua; bài đã hoàn thành có thể xem lại và tua tự do.</p></div>
-    <div id="courseStats" class="tag">0 bài</div>
-  </div>
-  <div class="mainCourse">
-    <aside class="panel">
-      <div class="panelHead"><h2>♧ Lộ Trình Học Tập</h2><span id="sideProgress" class="green">0%</span></div>
-      <div style="padding:14px">
-        <input id="searchLessons" class="field" placeholder="⌕ Tìm kiếm bài giảng AI..." oninput="renderLessons()" style="margin:0">
-        <div class="flex" style="margin-top:12px"><span class="muted" id="lessonCounts">Tất cả bài học</span><span class="muted" id="completedCount">0 đã xong</span></div>
-      </div>
-      <div id="lessonList" class="list"></div>
-    </aside>
-    <section class="panel courseContent">
-      <div id="lessonIntro" class="lessonIntro"><div class="eyebrow">CHƯƠNG TRÌNH HỌC AI</div><h2>Chào mừng bạn đến với AI Master</h2><p>Nhập số điện thoại đã đăng ký để bắt đầu học và lưu lịch sử cá nhân.</p></div>
-      <div class="player" id="playerWrap"><div id="player"><div class="empty">Đăng nhập và chọn một bài học để bắt đầu.</div></div></div>
-      <div id="watchCard" class="watchCard hidden">
-        <div class="flex"><span id="watchStatus" class="green">◈ Đang theo dõi tiến độ</span><span id="watchTime" class="muted">00:00 / 00:00</span></div>
-        <div class="progress"><div id="watchBar"></div></div>
-        <div class="flex"><span class="muted" id="watchMessage"></span>
-          <div><button class="secondary" onclick="loadQuiz()">Làm bài kiểm tra</button> <button id="nextBtn" onclick="nextVideo()">Bài tiếp theo ›</button></div>
+  <!-- Banner Tiêu Đề -->
+  <header class="hero-banner mb-3">
+    <div class="container d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <div class="d-flex align-items-center gap-3">
+        <img id="teacherImg" src="" alt="Thầy giáo Nguyễn Phong" class="teacher-img shadow">
+        <div>
+          <h3 class="fw-bold mb-1">🤖 HỌC AI CÙNG THẦY GIÁO NGUYỄN PHONG</h3>
+          <p class="mb-0 text-light opacity-75 small">Nâng cao kỹ năng số &amp; Ứng dụng trí tuệ nhân tạo thực chiến</p>
         </div>
       </div>
-      <div id="quizArea" class="quiz hidden"></div>
-    </section>
-  </div>
-</section>
-
-<section id="dashboard" class="wrap section hidden">
-  <div class="panel">
-    <div class="panelHead"><h2 id="dashboardTitle">Bảng thông tin</h2><button class="secondary" onclick="go('course')">Quay lại lộ trình</button></div>
-    <div id="dashboardBody" class="adminTable"></div>
-  </div>
-</section>
-
-<section id="admin" class="wrap section hidden">
-  <div class="flex">
-    <div><div class="eyebrow">ADMIN CONTROL CENTER</div><h2>Quản Trị Khóa Học</h2><p class="muted">Chỉ tài khoản quản trị (số điện thoại + mật khẩu) mới truy cập được khu vực này.</p></div>
-    <button onclick="exportData()" class="green">▤ Xuất Excel</button>
-  </div>
-  <div class="panel">
-    <div class="panelHead"><div class="adminTabs" id="adminTabs">
-      <button data-tab="videos" onclick="adminTab('videos')">Quản lý bài học</button>
-      <button data-tab="quizzes" class="secondary" onclick="adminTab('quizzes')">Câu hỏi kiểm tra</button>
-      <button data-tab="students" class="secondary" onclick="adminTab('students')">Quản lý học viên</button>
-      <button data-tab="history" class="secondary" onclick="adminTab('history')">Lịch sử học tập</button>
-    </div></div>
-    <div id="adminContent"></div>
-  </div>
-</section>
-</main>
-
-<footer class="footer">
-  <div class="footerInner">
-    <div class="teacherBlock">
-      <img id="teacherThumb" class="teacherThumb hidden" alt="Thầy giáo Nguyễn Phong">
-      <div>
-        <div class="eyebrow">✧ TÁC GIẢ & GIẢNG VIÊN KHÓA HỌC</div>
-        <h2 style="margin:8px 0">Thầy Giáo Nguyễn Phong</h2>
-        <p class="muted" style="line-height:1.7">Chuyên gia đào tạo và huấn luyện Trí tuệ Nhân tạo thực chiến. Sứ mệnh giúp người học làm chủ công cụ AI thế hệ mới, tối ưu hóa năng suất công việc và nâng cao hiệu quả.</p>
-        <a id="contactLink" style="color:var(--cyan)" href="#">✉</a> <span class="muted">· Hỗ trợ học tập</span>
+      <div id="userHeaderPanel">
+        <button class="btn btn-warning fw-semibold shadow-sm" onclick="showLoginModal()">
+          <i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập học tập
+        </button>
       </div>
     </div>
-    <div class="panel" style="padding:20px;max-width:420px"><strong>♢ Tiêu Chuẩn Học Tập 2026</strong><p class="muted" style="line-height:1.7">Học theo tiến độ cá nhân, bài kiểm tra kiến thức sau mỗi video và ghi nhận lịch sử học tập để theo dõi quá trình tiến bộ.</p></div>
-  </div>
-  <div class="footerInner" style="border-top:1px solid #18243a;margin-top:30px;padding-top:25px">
-    <span>© 2026 Thầy Giáo Nguyễn Phong. All rights reserved. Nền tảng học AI mỗi ngày.</span>
-    <span>Bảo mật dữ liệu học viên　·　Xuất báo cáo Excel　·　Phiên bản 2026</span>
-  </div>
-</footer>
+  </header>
 
-<script src="assets/app.js"></script>
+  <div class="container pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <div>
+        <button class="btn btn-danger fw-bold shadow-sm" onclick="startFinalExam()">
+          <i class="fa-solid fa-award me-1"></i> THI HẾT MÔN (30 CÂU)
+        </button>
+      </div>
+      <!-- Khu vực quản trị: chỉ hiện khi đăng nhập quản trị (số + mã PIN) -->
+      <div id="adminControlsArea" class="gap-2">
+        <button class="btn btn-primary fw-semibold shadow-sm" onclick="openLeaderboard()">
+          <i class="fa-solid fa-trophy text-warning me-1"></i> Bảng xếp hạng học viên
+        </button>
+        <button id="btnMasterExport" class="btn btn-success fw-bold shadow-sm" onclick="exportMasterExcel()">
+          <i class="fa-solid fa-file-excel me-1"></i> XUẤT EXCEL TỔNG HỢP
+        </button>
+        <button id="btnAdminModal" class="btn btn-dark fw-bold shadow-sm" onclick="openAdminModal()">
+          <i class="fa-solid fa-user-shield me-1"></i> TRANG QUẢN TRỊ
+        </button>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <!-- Cột trái: Danh mục bài học -->
+      <div class="col-lg-4" id="sidebarCol">
+        <div class="card shadow-sm border-0 h-100">
+          <div class="card-header bg-white py-2 px-3 fw-bold text-primary border-bottom d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center">
+              <button class="toggle-menu-btn me-2" onclick="toggleSidebarMenu()" title="Thu gọn / Mở rộng menu"><i class="fa-solid fa-bars"></i></button>
+              <span>Danh mục bài học</span>
+            </div>
+            <span class="badge bg-primary" id="videoCountBadge">0 bài</span>
+          </div>
+          <div class="list-group list-group-flush" id="videoList" style="max-height: 560px; overflow-y: auto;">
+            <div class="p-3 text-center text-muted">Đang tải danh sách bài học...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cột phải: Trình phát video -->
+      <div class="col-lg-8" id="contentCol">
+        <div class="card shadow-sm border-0 p-3">
+          <div class="d-flex align-items-center mb-2">
+            <button id="btnOpenSidebarQuick" class="toggle-menu-btn me-2" style="display:none;" onclick="toggleSidebarMenu()" title="Mở danh sách bài học"><i class="fa-solid fa-bars"></i></button>
+            <h5 id="currentVideoTitle" class="fw-bold mb-0 text-dark">Khóa học Trí tuệ Nhân tạo</h5>
+          </div>
+
+          <div class="video-container mb-3" oncontextmenu="return false;">
+            <div id="player"></div>
+            <div class="player-shield"></div>
+            <div id="guestLockScreen" class="lock-overlay">
+              <i class="fa-solid fa-lock text-warning fa-3x mb-3"></i>
+              <h5 class="fw-bold">NỘI DUNG YÊU CẦU ĐĂNG NHẬP</h5>
+              <p class="text-secondary small mb-3">Vui lòng xác thực số điện thoại để bắt đầu học tập và theo dõi tiến độ cá nhân.</p>
+              <button class="btn btn-warning fw-bold px-4" onclick="showLoginModal()"><i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập ngay</button>
+            </div>
+          </div>
+
+          <div id="studyAlert" class="alert alert-info py-2 d-flex align-items-center justify-content-between">
+            <span id="studyAlertText"><i class="fa-solid fa-shield-halved me-1"></i> Xem trọn vẹn video để xuất hiện nút kiểm tra hoàn thành modul.</span>
+            <span id="videoTimer" class="badge bg-primary">00:00</span>
+          </div>
+
+          <div id="resumeNotice" class="alert alert-warning py-1 small mb-2" style="display:none;"></div>
+
+          <div id="moduleQuizTriggerArea" class="text-center my-3" style="display:none;">
+            <button class="btn btn-success btn-lg fw-bold shadow px-4 py-2" onclick="startModuleExam()">
+              <i class="fa-solid fa-file-signature me-2"></i> KIỂM TRA HOÀN THÀNH MODUL (10 CÂU)
+            </button>
+            <p class="text-muted small mt-2">Đạt từ 7/10 câu để hoàn thành bài học và mở khóa quyền xem lại tự do.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="bg-dark text-white text-center py-4 mt-5">
+    <p class="mb-1 fw-bold">HỌC AI CÙNG THẦY GIÁO NGUYỄN PHONG</p>
+    <p class="mb-1 small"><a id="contactLink" class="link-warning" href="#"></a></p>
+    <p class="text-secondary small mt-1">Copyright © 2026 Nguyễn Phong. All rights reserved.</p>
+  </footer>
+
+  <!-- MODAL: BÀI THI -->
+  <div class="modal fade" id="quizModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white" id="quizModalHeader">
+          <h5 class="modal-title fw-bold" id="quizModalTitle"><i class="fa-solid fa-graduation-cap me-2"></i> BÀI THI KIỂM TRA</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body bg-light">
+          <div class="alert alert-primary py-2 small d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>Tiêu đề: <b id="quizModalLessonTitle">...</b></span>
+            <span>Điều kiện đạt: <b class="badge bg-danger fs-6" id="quizModalPassCond">7/10 câu</b></span>
+          </div>
+          <div id="examResultBanner" class="alert py-3 text-center mb-3" style="display:none;"></div>
+          <div id="quizQuestionsContainer"></div>
+        </div>
+        <div class="modal-footer bg-white">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button type="button" class="btn btn-success fw-bold px-4" id="btnSubmitQuizAnswers" onclick="submitAnswers()">
+            <i class="fa-solid fa-paper-plane me-1"></i> NỘP BÀI THI
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Đăng nhập / Mã PIN quản trị / Đăng ký -->
+  <div class="modal fade" id="authModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-id-card me-2"></i> Xác thực Học viên</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="stepPhone" onsubmit="event.preventDefault();verifyPhone()">
+            <label class="form-label fw-bold" for="inputPhone">Nhập số điện thoại của bạn:</label>
+            <input type="tel" id="inputPhone" class="form-control mb-3" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="Nhập số điện thoại...">
+            <button type="submit" class="btn btn-primary w-100 fw-semibold" id="btnPhoneNext">Tiếp tục</button>
+          </form>
+
+          <form id="stepAdminPin" style="display:none;" onsubmit="event.preventDefault();verifyAdminPin()">
+            <div class="alert alert-danger py-2 small mb-3"><i class="fa-solid fa-shield-halved me-1"></i> Phát hiện tài khoản Quản trị. Vui lòng nhập mã xác nhận bảo mật:</div>
+            <label class="form-label fw-bold" for="inputAdminPin">Mã xác nhận bảo mật (PIN):</label>
+            <input type="password" id="inputAdminPin" class="form-control mb-3" autocomplete="current-password" placeholder="••••••">
+            <button type="submit" class="btn btn-danger w-100 fw-bold" id="btnConfirmPin">Xác thực Quản trị</button>
+          </form>
+
+          <form id="stepRegister" style="display:none;" onsubmit="event.preventDefault();completeRegistration()">
+            <div class="alert alert-warning py-2 small mb-3">Số điện thoại mới. Xin vui lòng cung cấp thông tin để lưu tài khoản:</div>
+            <div class="mb-2">
+              <label class="form-label fw-bold" for="regName">Họ và tên <span class="text-danger">*</span>:</label>
+              <input type="text" id="regName" class="form-control" maxlength="100" placeholder="Nhập họ và tên...">
+            </div>
+            <div class="mb-2">
+              <label class="form-label fw-bold" for="regUnit">Đơn vị / Cơ quan <span class="text-danger">*</span>:</label>
+              <input type="text" id="regUnit" class="form-control" maxlength="200" placeholder="Nhập đơn vị công tác...">
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="regEmail">Email (Tùy chọn):</label>
+              <input type="email" id="regEmail" class="form-control" maxlength="100" placeholder="name@example.com">
+            </div>
+            <button type="submit" class="btn btn-success w-100 fw-bold" id="btnRegisterSubmit">Lưu thông tin &amp; Bắt đầu học</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Bảng xếp hạng -->
+  <div class="modal fade" id="leaderboardModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-warning">
+          <h5 class="modal-title fw-bold text-dark"><i class="fa-solid fa-trophy me-2"></i> BẢNG XẾP HẠNG HỌC VIÊN</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-0">
+          <table class="table table-striped mb-0 text-center">
+            <thead class="table-light"><tr><th>Hạng</th><th>Học viên</th><th>Đơn vị</th><th>Số bài xong</th></tr></thead>
+            <tbody id="leaderboardBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Quản trị -->
+  <div class="modal fade" id="adminModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-shield-halved me-2"></i> Quản Trị Hệ Thống - Thầy Nguyễn Phong</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabAdminResults"><i class="fa-solid fa-square-poll-vertical me-1"></i> Nhật ký thi Modul &amp; Thi hết môn</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdminVideos"><i class="fa-solid fa-video me-1"></i> Quản lý Bài học</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAdminUsers"><i class="fa-solid fa-users me-1"></i> Danh sách Học viên</button></li>
+          </ul>
+          <div class="tab-content">
+            <div class="tab-pane fade show active" id="tabAdminResults">
+              <input id="resultFilter" class="form-control form-control-sm mb-2" placeholder="Lọc theo tên, số điện thoại, mã video..." oninput="renderAdminResults()">
+              <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm align-middle text-center">
+                  <thead class="table-dark"><tr><th>Học viên</th><th>Số ĐT</th><th>Đơn vị</th><th>Loại thi</th><th>Mã Video</th><th>Lần</th><th>Đúng</th><th>Điểm</th><th>Kết quả</th><th>Thời gian</th></tr></thead>
+                  <tbody id="adminResultsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="tab-pane fade" id="tabAdminVideos">
+              <form class="row g-2 mb-3 bg-light p-3 rounded" onsubmit="event.preventDefault();saveAdminVideo()">
+                <input type="hidden" id="adminVideoId">
+                <div class="col-md-3"><input type="text" id="adminVideoCat" class="form-control" placeholder="Chủ đề (Topic)"></div>
+                <div class="col-md-4"><input type="text" id="adminVideoTitle" class="form-control" placeholder="Tên bài học"></div>
+                <div class="col-md-3"><input type="text" id="adminVideoKey" class="form-control" placeholder="YouTube ID hoặc link"></div>
+                <div class="col-md-1"><input type="number" id="adminVideoOrder" class="form-control" placeholder="STT" value="1"></div>
+                <div class="col-md-1"><button type="submit" class="btn btn-primary w-100 fw-bold" id="btnAdminSave">Lưu</button></div>
+                <div class="col-12 small text-muted" id="adminVideoEditing"></div>
+              </form>
+              <table class="table table-bordered table-sm align-middle">
+                <thead class="table-light"><tr><th>STT</th><th>Mã</th><th>Chủ đề</th><th>Tên bài học</th><th>YouTube ID</th><th>Tác vụ</th></tr></thead>
+                <tbody id="adminVideoListTable"></tbody>
+              </table>
+            </div>
+            <div class="tab-pane fade" id="tabAdminUsers">
+              <div class="small text-muted mb-2" id="adminUserCount"></div>
+              <div class="table-responsive">
+                <table class="table table-bordered table-sm align-middle">
+                  <thead class="table-light"><tr><th>Họ tên</th><th>Số ĐT</th><th>Đơn vị</th><th>Email</th><th>Ngày đăng ký</th><th>Thời gian (phút)</th></tr></thead>
+                  <tbody id="adminUserListTable"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/app.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>

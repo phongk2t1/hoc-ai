@@ -1,17 +1,16 @@
 /**
- * HỌC AI MỖI NGÀY — Thầy giáo Nguyễn Phong
+ * HỆ THỐNG HỌC AI CÙNG THẦY GIÁO NGUYỄN PHONG
  * Google Apps Script — API JSON cho giao diện chạy trên GitHub Pages.
+ * Copyright © 2026 Nguyễn Phong
  *
- * TRIỂN KHAI (xem README.md):
- * 1) Project Settings → Script Properties, thêm:
- *      SPREADSHEET_ID  = ID Google Sheet dữ liệu
- *      ADMIN_PHONE     = số điện thoại quản trị viên (10 số)
- *      ADMIN_PASSWORD  = mật khẩu quản trị (bắt buộc, tối thiểu 8 ký tự)
- *    (tuỳ chọn) ADMIN_EMAIL, ALLOWED_ORIGIN
- * 2) Chạy setup() một lần để tạo/kiểm tra các trang tính.
- * 3) Deploy → New deployment → Web app
- *      Execute as: Me   ·   Who has access: Anyone
- *    Sao chép URL /exec vào config.js của web.
+ * CẤU HÌNH (Project Settings → Script Properties):
+ *   SPREADSHEET_ID  ID Google Sheet dữ liệu
+ *   ADMIN_PHONE     Số điện thoại quản trị viên duy nhất
+ *   ADMIN_PIN       Mã xác nhận bảo mật của quản trị viên
+ *                   (nếu chưa có ADMIN_PIN thì dùng ADMIN_PASSWORD)
+ *
+ * TRIỂN KHAI: Deploy → Manage deployments → Edit → Version: New version
+ *   (Execute as: Me · Who has access: Anyone) — giữ nguyên URL /exec.
  */
 
 const PROPS = PropertiesService.getScriptProperties();
@@ -22,540 +21,550 @@ function prop_(key, fallback) {
 
 const CONFIG = {
   SPREADSHEET_ID: prop_('SPREADSHEET_ID', ''),
-  ADMIN_EMAIL: prop_('ADMIN_EMAIL', 'phongk2t1@gmail.com'),
   ADMIN_PHONE: prop_('ADMIN_PHONE', ''),
-  ADMIN_NAME: prop_('ADMIN_NAME', 'Nguyễn Phong'),
-  SESSION_PREFIX: 'AIMASTER_PHONE_SESSION_',
-  SESSION_TTL: 21600, // 6 giờ (tối đa của CacheService)
-  APP_NAME: 'Học AI mỗi ngày cùng thầy giáo Nguyễn Phong',
-  PASS_SCORE: 70,
-  MIN_WATCH_RATIO: 0.90
-};
-
-const SHEETS = {
-  STUDENTS: 'Students',
-  USERS: 'Users',            // bảng học viên cũ (Phone, FullName, Unit, Email...) — dùng dự phòng khi đăng nhập
-  VIDEOS: 'Videos',
-  QUIZZES: 'Quizzes',
-  PROGRESS: 'Progress',
-  ATTEMPTS: 'Attempts',
-  EVENTS: 'LearningHistory'
+  APP_NAME: 'Học AI Cùng Thầy Giáo Nguyễn Phong',
+  SESSION_PREFIX: 'HOCAI_SESSION_',
+  EXAM_PREFIX: 'HOCAI_EXAM_',
+  TTL: 21600,              // 6 giờ — tối đa của CacheService
+  MODULE_QUESTIONS: 10,
+  FINAL_QUESTIONS: 30,
+  FINAL_PER_TOPIC: 2,
+  MODULE_PASS: 7,          // đạt từ 7/10 câu
+  FINAL_PASS: 20,          // đạt từ 20/30 câu
+  STANDARD_MODULES: 16
 };
 
 /* =========================================================
- * HTTP ENTRY POINTS
+ * HTTP
  * ========================================================= */
 
-/** Các hàm được phép gọi từ giao diện web. */
 const API = {
-  ping:                  ()  => ({ appName: CONFIG.APP_NAME, time: new Date() }),
-  loginWithPhone:        (a) => loginWithPhone(a[0], a[1]),
-  getBootstrap:          (a) => getBootstrap(a[0]),
-  logout:                (a) => logout(a[0]),
-  recordWatch:           (a) => recordWatch(a[0], a[1], a[2], a[3], a[4]),
-  getQuiz:               (a) => getQuiz(a[0], a[1]),
-  submitQuiz:            (a) => submitQuiz(a[0], a[1], a[2], a[3]),
-  getLeaderboard:        (a) => getLeaderboard(a[0]),
-  getMyHistory:          (a) => getMyHistory(a[0]),
-  adminList:             (a) => adminList(a[0]),
-  adminSaveVideo:        (a) => adminSaveVideo(a[0], a[1]),
-  adminDeleteVideo:      (a) => adminDeleteVideo(a[0], a[1]),
-  adminSaveQuiz:         (a) => adminSaveQuiz(a[0], a[1]),
-  adminDeleteQuiz:       (a) => adminDeleteQuiz(a[0], a[1]),
-  adminSetStudentActive: (a) => adminSetStudentActive(a[0], a[1], a[2]),
-  adminSaveStudent:      (a) => adminSaveStudent(a[0], a[1])
+  ping:              ()  => ({ appName: CONFIG.APP_NAME, time: new Date() }),
+  authenticate:      (a) => authenticate(a[0], a[1]),
+  register:          (a) => register(a[0], a[1]),
+  resume:            (a) => resume(a[0]),
+  logout:            (a) => logout(a[0]),
+  getCourseData:     (a) => getCourseData(a[0]),
+  saveProgress:      (a) => saveProgress(a[0], a[1], a[2], a[3]),
+  getModuleExam:     (a) => getModuleExam(a[0], a[1]),
+  getFinalExam:      (a) => getFinalExam(a[0]),
+  submitExam:        (a) => submitExam(a[0], a[1], a[2]),
+  getLeaderboard:    (a) => getLeaderboard(a[0]),
+  getAdminData:      (a) => getAdminData(a[0]),
+  getMasterMatrix:   (a) => getMasterMatrix(a[0]),
+  saveVideoAdmin:    (a) => saveVideoAdmin(a[0], a[1]),
+  deleteVideoAdmin:  (a) => deleteVideoAdmin(a[0], a[1])
 };
 
-/**
- * Giao diện gửi POST với Content-Type: text/plain (tránh CORS preflight),
- * thân là JSON: { action: 'tênHàm', args: [...] }.
- */
+/** Giao diện gửi POST text/plain (tránh CORS preflight): { action, args: [...] } */
 function doPost(e) {
   let out;
   try {
     const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const fn = API[body.action];
     if (!fn) throw apiError_('Yêu cầu không hợp lệ.', 'BAD_ACTION');
-    const args = Array.isArray(body.args) ? body.args : [];
-    out = { ok: true, data: fn(args) };
+    out = { ok: true, data: fn(Array.isArray(body.args) ? body.args : []) };
   } catch (err) {
     out = { ok: false, error: (err && err.message) || String(err), code: (err && err.code) || '' };
   }
-  return json_(out);
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
-/** GET chỉ dùng để kiểm tra API còn hoạt động. */
 function doGet() {
-  return json_({ ok: true, data: { appName: CONFIG.APP_NAME, status: 'API đang hoạt động', time: new Date() } });
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, data: { appName: CONFIG.APP_NAME, status: 'API đang hoạt động', time: new Date() } }))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-function apiError_(message, code) {
-  const e = new Error(message);
-  e.code = code || '';
-  return e;
-}
+function apiError_(message, code) { const e = new Error(message); e.code = code || ''; return e; }
 
 /* =========================================================
- * SETUP
+ * CƠ SỞ DỮ LIỆU
  * ========================================================= */
 
-/** Chạy một lần để tạo bảng dữ liệu (không xoá dữ liệu cũ). */
-function setup() {
-  assertConfig_();
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const schemas = {
-    Students: ['email','fullName','phone','unit','createdAt','lastSeenAt','role','active','totalStudySeconds','lastStudyAt'],
-    Videos: ['videoId','topic','title','youtubeId','description','sortOrder','active','quizRequired'],
-    Quizzes: ['quizId','videoId','question','optionA','optionB','optionC','optionD','correctOption','explanation','sortOrder','active'],
-    Progress: ['email','videoId','status','lastPosition','duration','watchRatio','completedAt','bestScore','attemptCount','updatedAt','studySeconds'],
-    Attempts: ['attemptId','email','videoId','submittedAt','score','passed','answersJson'],
-    LearningHistory: ['eventId','email','videoId','eventType','position','duration','score','details','createdAt']
-  };
-  const report = [];
-  Object.keys(schemas).forEach(name => {
-    let sh = ss.getSheetByName(name);
-    if (!sh) sh = ss.insertSheet(name);
-    if (sh.getLastRow() === 0) sh.appendRow(schemas[name]);
-    const header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0].map(String);
-    const missing = schemas[name].filter(h => header.indexOf(h) < 0);
-    if (missing.length) report.push(name + ': thiếu cột ' + missing.join(', '));
-    sh.setFrozenRows(1);
-  });
-  if (!PROPS.getProperty('ADMIN_PASSWORD')) report.push('Chưa đặt ADMIN_PASSWORD trong Script Properties.');
-  const msg = report.length ? 'Đã tạo bảng. Cần kiểm tra:\n- ' + report.join('\n- ') : 'Cấu trúc dữ liệu đầy đủ.';
-  Logger.log(msg);
-  return msg;
-}
-
-function assertConfig_() {
+let DB_ = null;
+function getDb() {
   if (!CONFIG.SPREADSHEET_ID) throw apiError_('Máy chủ chưa cấu hình SPREADSHEET_ID (Script Properties).', 'CONFIG');
-  if (!CONFIG.ADMIN_PHONE) throw apiError_('Máy chủ chưa cấu hình ADMIN_PHONE (Script Properties).', 'CONFIG');
+  if (!DB_) DB_ = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  return DB_;
+}
+function videoSheet_() { const db = getDb(); return db.getSheetByName('Videos') || db.getSheets()[0]; }
+
+function ensureSheetsExist() {
+  const db = getDb();
+  const defs = {
+    Users: ['Phone', 'FullName', 'Unit', 'Email', 'RegisterDate', 'TotalStudyTime'],
+    Progress: ['Phone', 'VideoID', 'Completed', 'QuizPassed', 'LastStoppedSeconds', 'LastStudyDate'],
+    QuizResults: ['Phone', 'FullName', 'Unit', 'ExamType', 'VideoID', 'Attempt', 'CorrectCount', 'TotalQuestions', 'Score', 'Status', 'ExamTime']
+  };
+  Object.keys(defs).forEach(name => {
+    if (!db.getSheetByName(name)) {
+      const sh = db.insertSheet(name);
+      sh.appendRow(defs[name]);
+      sh.getRange('A:A').setNumberFormat('@');
+    }
+  });
 }
 
-/* =========================================================
- * ĐĂNG NHẬP / PHIÊN
- * ========================================================= */
-
-/** Đăng nhập bằng số điện thoại. Quản trị viên phải nhập thêm mật khẩu. */
-function loginWithPhone(phoneInput, password) {
-  assertConfig_();
-  const phone = normalizePhone_(phoneInput);
-  if (!/^0[0-9]{9}$/.test(phone)) throw apiError_('Vui lòng nhập số điện thoại gồm 10 chữ số.', 'BAD_PHONE');
-
-  const isAdmin = phone === normalizePhone_(CONFIG.ADMIN_PHONE);
-  let student;
-
-  if (isAdmin) {
-    checkAdminPassword_(password);
-    upsertStudent_({ email: CONFIG.ADMIN_EMAIL, name: CONFIG.ADMIN_NAME, phone: phone, role: 'admin' });
-    student = { email: CONFIG.ADMIN_EMAIL.toLowerCase(), fullName: CONFIG.ADMIN_NAME, phone: phone, role: 'admin' };
-  } else {
-    student = findStudentByPhone_(phone);
-    if (!student) throw apiError_('Số điện thoại chưa có trong danh sách học viên. Vui lòng liên hệ quản trị viên để được đăng ký.', 'NOT_REGISTERED');
-    if (student.active === false) throw apiError_('Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên.', 'LOCKED');
-    upsertStudent_({ email: student.email, name: student.fullName, phone: phone, unit: student.unit, role: 'student' });
-    student.role = 'student';
-  }
-
-  const sessionId = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  const session = { email: student.email, name: student.fullName || (isAdmin ? CONFIG.ADMIN_NAME : 'Học viên'), phone: phone, role: student.role };
-  CacheService.getScriptCache().put(CONFIG.SESSION_PREFIX + sessionId, JSON.stringify(session), CONFIG.SESSION_TTL);
-  return getBootstrap(sessionId);
+/** Chạy tay một lần trong trình soạn thảo để kiểm tra cấu hình. */
+function setup() {
+  ensureSheetsExist();
+  const msg = [];
+  if (!CONFIG.ADMIN_PHONE) msg.push('Thiếu ADMIN_PHONE');
+  if (!adminPin_()) msg.push('Thiếu ADMIN_PIN');
+  if (!getDb().getSheetByName('Quizzes')) msg.push('Thiếu trang tính Quizzes');
+  Logger.log(msg.length ? 'Cần bổ sung: ' + msg.join('; ') : 'Cấu hình đầy đủ.');
 }
 
-/** Chống dò mật khẩu: khoá đăng nhập quản trị 15 phút sau 5 lần sai. */
-function checkAdminPassword_(password) {
-  const expected = PROPS.getProperty('ADMIN_PASSWORD');
-  if (!expected || expected.length < 8) throw apiError_('Máy chủ chưa đặt ADMIN_PASSWORD (tối thiểu 8 ký tự) trong Script Properties.', 'CONFIG');
-  const cache = CacheService.getScriptCache();
-  const key = 'ADMIN_FAILS';
-  const fails = Number(cache.get(key) || 0);
-  if (fails >= 5) throw apiError_('Đăng nhập quản trị tạm khoá 15 phút do nhập sai nhiều lần.', 'ADMIN_LOCKED');
-  if (!password) throw apiError_('Vui lòng nhập mật khẩu quản trị.', 'ADMIN_PASSWORD_REQUIRED');
-  if (String(password) !== expected) {
-    cache.put(key, String(fails + 1), 900);
-    throw apiError_('Mật khẩu quản trị không đúng.', 'ADMIN_PASSWORD_REQUIRED');
-  }
-  cache.remove(key);
+function formatPhone(phone) {
+  if (phone === null || phone === undefined) return '';
+  let str = String(phone).replace(/\.0+$/, '').replace(/\D/g, '').trim();
+  if (/^84\d{9}$/.test(str)) str = '0' + str.slice(2);
+  if (str.length === 9) str = '0' + str;
+  return str;
+}
+function checkIsAdmin(phone) { return !!CONFIG.ADMIN_PHONE && formatPhone(phone) === formatPhone(CONFIG.ADMIN_PHONE); }
+function isTrue_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
+function nowStr_() { return Utilities.formatDate(new Date(), 'GMT+7', 'yyyy-MM-dd HH:mm:ss'); }
+function fmtDate_(v, pattern) {
+  if (!v) return '';
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d.getTime()) ? String(v) : Utilities.formatDate(d, 'GMT+7', pattern || 'yyyy-MM-dd HH:mm:ss');
+}
+function shuffle_(arr) {
+  for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+  return arr;
+}
+function extractYoutubeId_(raw) {
+  const s = String(raw || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  const m = s.match(/(?:youtu\.be\/|v\/|u\/\w\/|embed\/|shorts\/|live\/|watch\?v=|&v=)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : s;
 }
 
-/**
- * Tìm học viên theo số điện thoại: ưu tiên bảng Students,
- * nếu không có thì tìm ở bảng Users (dữ liệu cũ) — khi đó khoá dữ liệu là số điện thoại.
- */
-function findStudentByPhone_(phone) {
-  const s = dataRows_(sheet_(SHEETS.STUDENTS)).find(r => normalizePhone_(r.phone) === phone);
-  if (s) {
-    const email = String(s.email || '').trim().toLowerCase() || phone;
-    return { email: email, fullName: String(s.fullName || '').trim(), phone: phone, unit: String(s.unit || ''), active: !isFalse_(s.active) };
-  }
-  const usersSheet = optionalSheet_(SHEETS.USERS);
-  if (usersSheet) {
-    const u = dataRows_(usersSheet).find(r => normalizePhone_(r.Phone || r.phone) === phone);
-    if (u) return { email: phone, fullName: String(u.FullName || u.fullName || '').trim(), phone: phone, unit: String(u.Unit || u.unit || ''), active: !isFalse_(u.Active === undefined ? u.active : u.Active) };
+function findUser_(phone) {
+  const sh = getDb().getSheetByName('Users');
+  const data = sh.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (formatPhone(data[i][0]) === phone) {
+      return { row: i + 1, phone: phone, fullName: String(data[i][1] || ''), unit: String(data[i][2] || ''), email: String(data[i][3] || ''), studyTime: Number(data[i][5]) || 0 };
+    }
   }
   return null;
 }
 
-function getBootstrap(sessionToken) {
-  const user = verifySession_(sessionToken);
-  return {
-    appName: CONFIG.APP_NAME,
-    user: { email: user.email, name: user.name, phone: user.phone || '', role: user.role },
-    sessionToken: sessionToken,
-    passScore: CONFIG.PASS_SCORE,
-    minWatchRatio: CONFIG.MIN_WATCH_RATIO,
-    videos: getVideosForUser_(user),
-    leaderboard: getLeaderboard_(),
-    profile: getStudent_(user.email)
-  };
-}
-
-function logout(sessionToken) {
-  if (sessionToken) CacheService.getScriptCache().remove(CONFIG.SESSION_PREFIX + String(sessionToken));
-  return { ok: true };
-}
-
-function verifySession_(sessionToken) {
-  const token = String(sessionToken || '').trim();
-  if (!token) throw apiError_('Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.', 'SESSION');
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get(CONFIG.SESSION_PREFIX + token);
-  if (!cached) throw apiError_('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'SESSION');
-  const user = JSON.parse(cached);
-  if (!user.email || !user.phone) throw apiError_('Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.', 'SESSION');
-  cache.put(CONFIG.SESSION_PREFIX + token, cached, CONFIG.SESSION_TTL); // gia hạn phiên khi còn hoạt động
-  return user;
-}
-
-function isAdminUser_(user) { return user && user.role === 'admin'; }
-function assertAdmin_(user) { if (!isAdminUser_(user)) throw apiError_('Bạn không có quyền quản trị.', 'FORBIDDEN'); }
-
 /* =========================================================
- * HỌC TẬP
+ * PHIÊN ĐĂNG NHẬP
  * ========================================================= */
 
-function getStudent_(email) {
-  const row = dataRows_(sheet_(SHEETS.STUDENTS)).find(r => sameKey_(r.email, email));
-  return row ? { email: String(row.email), fullName: String(row.fullName || ''), phone: String(row.phone || ''), unit: String(row.unit || ''), role: String(row.role || 'student'), active: !isFalse_(row.active) } : null;
-}
+function adminPin_() { return prop_('ADMIN_PIN', prop_('ADMIN_PASSWORD', '')); }
 
-function getVideosForUser_(user) {
-  const admin = isAdminUser_(user);
-  const all = dataRows_(sheet_(SHEETS.VIDEOS))
-    .filter(v => isTrue_(v.active) && String(v.videoId || '').trim())
-    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
-  const pmap = {};
-  dataRows_(sheet_(SHEETS.PROGRESS)).filter(p => sameKey_(p.email, user.email)).forEach(p => pmap[String(p.videoId)] = p);
-  return all.map((v, i) => {
-    const p = pmap[String(v.videoId)] || {};
-    const completed = String(p.status) === 'completed';
-    return {
-      videoId: String(v.videoId), topic: clean_(v.topic) || 'Chưa phân loại', title: clean_(v.title) || 'Bài học',
-      youtubeId: String(v.youtubeId || '').trim(), description: clean_(v.description), sortOrder: Number(v.sortOrder || i + 1),
-      quizRequired: isTrue_(v.quizRequired),
-      status: completed ? 'completed' : (admin ? 'admin' : 'unlocked'),
-      lastPosition: Number(p.lastPosition || 0), duration: Number(p.duration || 0), watchRatio: Number(p.watchRatio || 0),
-      bestScore: Number(p.bestScore || 0), attemptCount: Number(p.attemptCount || 0),
-      completedAt: p.completedAt ? String(p.completedAt) : '', studySeconds: Number(p.studySeconds || 0)
-    };
-  });
-}
-
-function recordWatch(token, videoId, position, duration, eventType) {
-  const user = verifySession_(token);
-  const video = findVideo_(videoId);
-  if (!video || !isTrue_(video.active)) throw apiError_('Bài học không tồn tại hoặc đã bị ẩn.', 'NOT_FOUND');
-  const lock = LockService.getScriptLock(); lock.waitLock(10000);
-  try {
-    const pos = Math.max(0, Number(position) || 0);
-    const dur = Math.max(0, Number(duration) || 0);
-    const sh = sheet_(SHEETS.PROGRESS);
-    const values = sh.getDataRange().getValues();
-    let rowIndex = -1;
-    for (let i = 1; i < values.length; i++) if (sameKey_(values[i][0], user.email) && String(values[i][1]) === String(videoId)) { rowIndex = i + 1; break; }
-    const old = rowIndex > 0 ? values[rowIndex - 1] : [];
-    const oldPos = Number(old[3] || 0);
-    const oldCompleted = String(old[2]) === 'completed';
-    const free = oldCompleted || isAdminUser_(user);
-    const safePosition = free ? pos : Math.max(oldPos, Math.min(pos, oldPos + 15));
-    const newRatio = dur > 0 ? Math.max(Number(old[5] || 0), Math.min(1, safePosition / dur)) : Number(old[5] || 0);
-    const elapsed = Math.max(0, Math.min(15, pos - oldPos));
-    const row = [user.email, String(videoId), oldCompleted ? 'completed' : 'in_progress', safePosition, dur || Number(old[4] || 0), newRatio,
-      old[6] || '', Number(old[7] || 0), Number(old[8] || 0), new Date(), Number(old[10] || 0) + elapsed];
-    if (rowIndex > 0) sh.getRange(rowIndex, 1, 1, row.length).setValues([row]); else sh.appendRow(row);
-    updateStudentStudy_(user.email, elapsed);
-    logEvent_(user.email, videoId, eventType || 'WATCH_PROGRESS', pos, dur, '', 'Progress updated');
-    return { ok: true, progress: { lastPosition: safePosition, duration: dur, watchRatio: newRatio, completed: oldCompleted } };
-  } finally { lock.releaseLock(); }
-}
-
-function getQuiz(token, videoId) {
-  const user = verifySession_(token);
-  if (!getVideosForUser_(user).some(x => x.videoId === String(videoId))) throw apiError_('Không tìm thấy bài học.', 'NOT_FOUND');
-  return dataRows_(sheet_(SHEETS.QUIZZES))
-    .filter(q => String(q.videoId) === String(videoId) && isTrue_(q.active))
-    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-    .map(q => ({ quizId: String(q.quizId), question: String(q.question), options: [q.optionA, q.optionB, q.optionC, q.optionD].map(x => String(x || '')) }));
-  // Không gửi đáp án/giải thích xuống trình duyệt trước khi nộp bài.
-}
-
-function submitQuiz(token, videoId, answers, watchedRatio) {
-  const user = verifySession_(token);
-  const v = getVideosForUser_(user).find(x => x.videoId === String(videoId));
-  if (!v) throw apiError_('Không tìm thấy bài học.', 'NOT_FOUND');
-  // Chỉ tin tỉ lệ xem do máy chủ ghi nhận (client có thể gửi số giả).
-  const serverRatio = Number(v.watchRatio) || 0;
-  const clientRatio = Math.min(Number(watchedRatio) || 0, serverRatio + 0.05);
-  const ratio = Math.max(serverRatio, clientRatio);
-  if (!isAdminUser_(user) && v.status !== 'completed' && ratio < CONFIG.MIN_WATCH_RATIO) {
-    throw apiError_('Bạn cần xem tối thiểu ' + Math.round(CONFIG.MIN_WATCH_RATIO * 100) + '% thời lượng video trước khi làm bài kiểm tra.', 'WATCH_MORE');
+/** Khoá xác thực quản trị 15 phút sau 5 lần nhập sai mã. */
+function checkAdminPin_(pin) {
+  const expected = adminPin_();
+  if (!expected) throw apiError_('Máy chủ chưa đặt ADMIN_PIN trong Script Properties.', 'CONFIG');
+  const cache = CacheService.getScriptCache();
+  const fails = Number(cache.get('HOCAI_PIN_FAILS') || 0);
+  if (fails >= 5) throw apiError_('Đăng nhập quản trị tạm khoá 15 phút do nhập sai nhiều lần.', 'ADMIN_LOCKED');
+  if (!pin) return false;
+  if (String(pin).trim() !== String(expected)) {
+    cache.put('HOCAI_PIN_FAILS', String(fails + 1), 900);
+    throw apiError_('Mã xác nhận không chính xác! Vui lòng thử lại.', 'BAD_PIN');
   }
-  const qs = dataRows_(sheet_(SHEETS.QUIZZES)).filter(q => String(q.videoId) === String(videoId) && isTrue_(q.active));
-  if (!qs.length) throw apiError_('Bài học chưa có câu hỏi kiểm tra. Vui lòng báo quản trị viên.', 'NO_QUIZ');
-  const answerMap = answers || {};
-  let correct = 0;
-  const review = qs.map(q => {
-    const right = String(q.correctOption || '').trim().toUpperCase();
-    const chosen = String(answerMap[q.quizId] || '');
-    if (chosen === right) correct++;
-    return { quizId: String(q.quizId), chosen: chosen, correct: right, explanation: String(q.explanation || '') };
-  });
-  const score = Math.round(correct / qs.length * 100);
-  const passed = score >= CONFIG.PASS_SCORE;
+  cache.remove('HOCAI_PIN_FAILS');
+  return true;
+}
+
+function createSession_(user, isAdmin) {
+  const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  const s = { phone: user.phone, fullName: user.fullName, unit: user.unit, email: user.email || '', isAdmin: !!isAdmin };
+  CacheService.getScriptCache().put(CONFIG.SESSION_PREFIX + token, JSON.stringify(s), CONFIG.TTL);
+  return { token: token, user: s };
+}
+
+function session_(token) {
+  const t = String(token || '').trim();
+  if (!t) throw apiError_('Vui lòng đăng nhập để tiếp tục.', 'SESSION');
+  const cache = CacheService.getScriptCache();
+  const raw = cache.get(CONFIG.SESSION_PREFIX + t);
+  if (!raw) throw apiError_('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'SESSION');
+  cache.put(CONFIG.SESSION_PREFIX + t, raw, CONFIG.TTL); // gia hạn khi còn hoạt động
+  const s = JSON.parse(raw);
+  s.token = t;
+  return s;
+}
+function adminSession_(token) {
+  const s = session_(token);
+  if (!s.isAdmin || !checkIsAdmin(s.phone)) throw apiError_('Truy cập trái phép!', 'FORBIDDEN');
+  return s;
+}
+
+/** 1. Xác thực học viên & quản trị viên */
+function authenticate(phoneInput, adminPin) {
+  ensureSheetsExist();
+  const phone = formatPhone(phoneInput);
+  if (!/^0\d{9}$/.test(phone)) throw apiError_('Vui lòng nhập số điện thoại hợp lệ (10 chữ số).', 'BAD_PHONE');
+  const isAdmin = checkIsAdmin(phone);
+  if (isAdmin && !checkAdminPin_(adminPin)) {
+    return { exists: true, requirePin: true, phone: phone, message: 'Yêu cầu nhập mã xác nhận bảo mật của Quản trị viên!' };
+  }
+  const user = findUser_(phone);
+  if (!user) return { exists: false, requirePin: false, phone: phone };
+  const ses = createSession_(user, isAdmin);
+  return { exists: true, requirePin: false, token: ses.token, user: ses.user };
+}
+
+/** 2. Đăng ký học viên mới (không cho ghi đè hồ sơ đã có). */
+function register(userData, adminPin) {
+  ensureSheetsExist();
+  userData = userData || {};
+  const phone = formatPhone(userData.phone);
+  if (!/^0\d{9}$/.test(phone)) throw apiError_('Số điện thoại không hợp lệ.', 'BAD_PHONE');
+  const fullName = String(userData.fullName || '').trim().slice(0, 100);
+  const unit = String(userData.unit || '').trim().slice(0, 200);
+  const email = String(userData.email || '').trim().slice(0, 100);
+  if (!fullName || !unit) throw apiError_('Vui lòng điền họ tên và đơn vị!', 'BAD_INPUT');
+  const isAdmin = checkIsAdmin(phone);
+  if (isAdmin && !checkAdminPin_(adminPin)) throw apiError_('Yêu cầu mã xác nhận của Quản trị viên.', 'BAD_PIN');
 
   const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  let user;
   try {
-    sheet_(SHEETS.ATTEMPTS).appendRow([Utilities.getUuid(), user.email, String(videoId), new Date(), score, passed, JSON.stringify(answerMap)]);
-    const psh = sheet_(SHEETS.PROGRESS);
-    const vals = psh.getDataRange().getValues();
-    let rowIndex = -1;
-    for (let i = 1; i < vals.length; i++) if (sameKey_(vals[i][0], user.email) && String(vals[i][1]) === String(videoId)) { rowIndex = i + 1; break; }
-    const old = rowIndex > 0 ? vals[rowIndex - 1] : [];
-    const completed = String(old[2]) === 'completed' || passed;
-    const row = [user.email, String(videoId), completed ? 'completed' : 'in_progress', Number(old[3] || 0), Number(old[4] || 0),
-      Math.max(Number(old[5] || 0), ratio), completed ? (old[6] || new Date()) : '', Math.max(Number(old[7] || 0), score),
-      Number(old[8] || 0) + 1, new Date(), Number(old[10] || 0)];
-    if (rowIndex > 0) psh.getRange(rowIndex, 1, 1, row.length).setValues([row]); else psh.appendRow(row);
-    logEvent_(user.email, videoId, 'QUIZ_SUBMITTED', Number(old[3] || 0), Number(old[4] || 0), score, 'passed=' + passed + '; correct=' + correct + '/' + qs.length);
-  } finally { lock.releaseLock(); }
-  CacheService.getScriptCache().remove('LEADERBOARD');
-
-  return { score: score, passed: passed, correct: correct, total: qs.length, passScore: CONFIG.PASS_SCORE, review: review,
-           videos: getVideosForUser_(user), leaderboard: getLeaderboard_() };
-}
-
-function getLeaderboard(token) {
-  verifySession_(token);
-  return getLeaderboard_();
-}
-
-function getLeaderboard_() {
-  const cache = CacheService.getScriptCache();
-  const hit = cache.get('LEADERBOARD');
-  if (hit) return JSON.parse(hit);
-  const students = dataRows_(sheet_(SHEETS.STUDENTS)).filter(s => !isFalse_(s.active) && String(s.role) !== 'admin');
-  const progress = dataRows_(sheet_(SHEETS.PROGRESS));
-  const attempts = dataRows_(sheet_(SHEETS.ATTEMPTS));
-  const done = {}, scores = {};
-  progress.forEach(p => { if (String(p.status) === 'completed') { const k = key_(p.email); done[k] = (done[k] || 0) + 1; } });
-  attempts.forEach(a => { const k = key_(a.email); (scores[k] = scores[k] || []).push(Number(a.score || 0)); });
-  const rows = students.map(s => {
-    const k = key_(s.email);
-    const sc = scores[k] || [];
-    const sum = sc.reduce((x, y) => x + y, 0);
-    const completed = done[k] || 0;
-    return { name: String(s.fullName || 'Học viên'), unit: String(s.unit || ''), completed: completed,
-             averageScore: sc.length ? Math.round(sum / sc.length) : 0, points: completed * 100 + sum };
-  }).sort((a, b) => b.points - a.points || b.completed - a.completed || b.averageScore - a.averageScore)
-    .slice(0, 50).map((x, i) => Object.assign({ rank: i + 1 }, x));
-  cache.put('LEADERBOARD', JSON.stringify(rows), 60);
-  return rows;
-}
-
-function getMyHistory(token) {
-  const user = verifySession_(token);
-  const history = dataRows_(sheet_(SHEETS.EVENTS)).filter(h => sameKey_(h.email, user.email)).slice(-500).reverse();
-  return { history: history };
-}
-
-/* =========================================================
- * QUẢN TRỊ
- * ========================================================= */
-
-function adminList(token) {
-  assertAdmin_(verifySession_(token));
-  return {
-    students: dataRows_(sheet_(SHEETS.STUDENTS)),
-    videos: dataRows_(sheet_(SHEETS.VIDEOS)),
-    quizzes: dataRows_(sheet_(SHEETS.QUIZZES)),
-    history: dataRows_(sheet_(SHEETS.EVENTS)).slice(-500).reverse()
-  };
-}
-
-function adminSaveVideo(token, video) {
-  const user = verifySession_(token); assertAdmin_(user);
-  const v = video || {};
-  const id = String(v.videoId || '').trim() || 'VID' + Utilities.getUuid().slice(0, 8).toUpperCase();
-  const title = String(v.title || '').trim();
-  const youtubeId = extractYoutubeId_(String(v.youtubeId || '').trim());
-  if (!title) throw apiError_('Nhập tiêu đề video.');
-  if (!youtubeId) throw apiError_('Nhập ID hoặc đường dẫn YouTube hợp lệ.');
-  const row = [id, String(v.topic || 'Chưa phân loại'), title, youtubeId, String(v.description || ''), Number(v.sortOrder || 1), v.active !== false, v.quizRequired !== false];
-  upsertById_(SHEETS.VIDEOS, id, row);
-  return { ok: true, videoId: id };
-}
-
-function adminDeleteVideo(token, videoId) {
-  assertAdmin_(verifySession_(token));
-  deleteById_(SHEETS.VIDEOS, videoId);
-  return { ok: true };
-}
-
-function adminSaveQuiz(token, quiz) {
-  assertAdmin_(verifySession_(token));
-  const q = quiz || {};
-  const id = String(q.quizId || '').trim() || 'Q' + Utilities.getUuid().slice(0, 8).toUpperCase();
-  if (!String(q.videoId || '').trim() || !String(q.question || '').trim()) throw apiError_('Cần chọn video và nhập câu hỏi.');
-  const correct = String(q.correctOption || '').trim().toUpperCase();
-  if (['A', 'B', 'C', 'D'].indexOf(correct) < 0) throw apiError_('Đáp án đúng phải là A, B, C hoặc D.');
-  const row = [id, String(q.videoId), String(q.question), String(q.optionA || ''), String(q.optionB || ''), String(q.optionC || ''), String(q.optionD || ''),
-    correct, String(q.explanation || ''), Number(q.sortOrder || 1), q.active !== false];
-  upsertById_(SHEETS.QUIZZES, id, row);
-  return { ok: true, quizId: id };
-}
-
-function adminDeleteQuiz(token, quizId) {
-  assertAdmin_(verifySession_(token));
-  deleteById_(SHEETS.QUIZZES, quizId);
-  return { ok: true };
-}
-
-function adminSetStudentActive(token, email, active) {
-  assertAdmin_(verifySession_(token));
-  const sh = sheet_(SHEETS.STUDENTS), vals = sh.getDataRange().getValues();
-  const col = vals[0].map(String).indexOf('active') + 1;
-  for (let i = 1; i < vals.length; i++) if (sameKey_(vals[i][0], email)) { sh.getRange(i + 1, col).setValue(Boolean(active)); return { ok: true }; }
-  throw apiError_('Không tìm thấy học viên.');
-}
-
-/** Thêm học viên mới (hoặc cập nhật theo số điện thoại). */
-function adminSaveStudent(token, s) {
-  assertAdmin_(verifySession_(token));
-  s = s || {};
-  const phone = normalizePhone_(s.phone);
-  if (!/^0[0-9]{9}$/.test(phone)) throw apiError_('Số điện thoại học viên phải gồm 10 chữ số.');
-  const name = String(s.fullName || '').trim();
-  if (!name) throw apiError_('Nhập họ tên học viên.');
-  const sh = sheet_(SHEETS.STUDENTS), vals = sh.getDataRange().getValues(), h = vals[0].map(String), now = new Date();
-  for (let i = 1; i < vals.length; i++) {
-    if (normalizePhone_(vals[i][h.indexOf('phone')]) === phone) {
-      sh.getRange(i + 1, h.indexOf('fullName') + 1).setValue(name);
-      sh.getRange(i + 1, h.indexOf('unit') + 1).setValue(String(s.unit || ''));
-      return { ok: true, updated: true };
+    user = findUser_(phone);
+    if (!user) {
+      getDb().getSheetByName('Users').appendRow(["'" + phone, fullName, unit, email, nowStr_(), 0]);
+      user = { phone: phone, fullName: fullName, unit: unit, email: email };
     }
-  }
-  const email = String(s.email || '').trim().toLowerCase() || phone;
-  appendByHeader_(sh, { email: email, fullName: name, phone: "'" + phone, unit: String(s.unit || ''), createdAt: now, role: 'student', active: true, totalStudySeconds: 0 });
-  return { ok: true, created: true };
+  } finally { lock.releaseLock(); }
+  const ses = createSession_(user, isAdmin);
+  return { exists: true, token: ses.token, user: ses.user };
 }
 
+function resume(token) { const s = session_(token); return { token: s.token, user: { phone: s.phone, fullName: s.fullName, unit: s.unit, email: s.email, isAdmin: s.isAdmin } }; }
+function logout(token) { if (token) CacheService.getScriptCache().remove(CONFIG.SESSION_PREFIX + String(token)); return true; }
+
 /* =========================================================
- * TIỆN ÍCH DỮ LIỆU
+ * BÀI HỌC & TIẾN ĐỘ
  * ========================================================= */
 
-function upsertStudent_(user) {
-  const sh = sheet_(SHEETS.STUDENTS), vals = sh.getDataRange().getValues(), h = vals[0].map(String), now = new Date();
-  const c = name => h.indexOf(name) + 1;
-  for (let i = 1; i < vals.length; i++) {
-    if (sameKey_(vals[i][0], user.email)) {
-      if (c('lastSeenAt')) sh.getRange(i + 1, c('lastSeenAt')).setValue(now);
-      if (user.role === 'admin') {
-        if (c('fullName')) sh.getRange(i + 1, c('fullName')).setValue(CONFIG.ADMIN_NAME);
-        if (c('role')) sh.getRange(i + 1, c('role')).setValue('admin');
-        if (c('active')) sh.getRange(i + 1, c('active')).setValue(true);
+/** 3. Danh sách bài học (khách xem tên bài; chỉ người đăng nhập mới nhận mã video). */
+function getCourseData(token) {
+  let s = null;
+  if (token) { try { s = session_(token); } catch (e) { s = null; } }
+  const vData = videoSheet_().getDataRange().getValues();
+  const progressMap = {};
+  if (s) {
+    const pSheet = getDb().getSheetByName('Progress');
+    const pData = pSheet ? pSheet.getDataRange().getValues() : [];
+    for (let i = 1; i < pData.length; i++) {
+      if (formatPhone(pData[i][0]) === s.phone) {
+        progressMap[String(pData[i][1]).trim()] = { completed: isTrue_(pData[i][2]), stoppedSec: Number(pData[i][4]) || 0 };
       }
-      return;
     }
   }
-  appendByHeader_(sh, { email: user.email, fullName: user.name || '', phone: user.phone ? "'" + user.phone : '', unit: user.unit || (user.role === 'admin' ? 'Quản trị hệ thống' : ''),
-                        createdAt: now, lastSeenAt: now, role: user.role, active: true, totalStudySeconds: 0, lastStudyAt: '' });
-}
-
-function updateStudentStudy_(email, seconds) {
-  if (seconds <= 0) return;
-  const sh = sheet_(SHEETS.STUDENTS), vals = sh.getDataRange().getValues(), h = vals[0].map(String);
-  const t = h.indexOf('totalStudySeconds'), l = h.indexOf('lastStudyAt');
-  if (t < 0) return;
-  for (let i = 1; i < vals.length; i++) if (sameKey_(vals[i][0], email)) {
-    sh.getRange(i + 1, t + 1).setValue(Number(vals[i][t] || 0) + seconds);
-    if (l >= 0) sh.getRange(i + 1, l + 1).setValue(new Date());
-    return;
+  const videos = [];
+  for (let i = 1; i < vData.length; i++) {
+    const id = String(vData[i][0]).trim();
+    if (!id) continue;
+    if (vData[i][6] === false || String(vData[i][6]).toUpperCase() === 'FALSE') continue; // bài đang ẩn
+    const p = progressMap[id] || { completed: false, stoppedSec: 0 };
+    videos.push({
+      id: id,
+      category: String(vData[i][1] || 'Khóa học AI').trim(),
+      title: String(vData[i][2] || vData[i][1]).trim(),
+      order: Number(vData[i][5]) || i,
+      youtubeId: s ? extractYoutubeId_(vData[i][3]) : '',
+      completed: p.completed,
+      resumeTime: p.stoppedSec
+    });
   }
+  videos.sort((a, b) => a.order - b.order);
+  return { videos: videos, isAdmin: !!(s && s.isAdmin), loggedIn: !!s };
 }
 
-function logEvent_(email, videoId, eventType, position, duration, score, details) {
-  sheet_(SHEETS.EVENTS).appendRow([Utilities.getUuid(), email, String(videoId), eventType, position, duration, score, details, new Date()]);
+/** Lưu điểm dừng video và cộng dồn thời gian học (phút) vào Users.TotalStudyTime. */
+function saveProgress(token, videoId, currentSeconds, playing) {
+  const s = session_(token);
+  const vid = String(videoId || '').trim();
+  if (!vid) return false;
+  const sec = Math.max(0, Math.floor(Number(currentSeconds) || 0));
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const pSheet = getDb().getSheetByName('Progress');
+    const pData = pSheet.getDataRange().getValues();
+    let found = false;
+    for (let i = 1; i < pData.length; i++) {
+      if (formatPhone(pData[i][0]) === s.phone && String(pData[i][1]).trim() === vid) {
+        if (!isTrue_(pData[i][2])) pSheet.getRange(i + 1, 5).setValue(sec);
+        pSheet.getRange(i + 1, 6).setValue(new Date());
+        found = true; break;
+      }
+    }
+    if (!found) pSheet.appendRow(["'" + s.phone, vid, false, false, sec, new Date()]);
+
+    if (playing) {
+      const cache = CacheService.getScriptCache(), k = 'HOCAI_BEAT_' + s.token;
+      const last = Number(cache.get(k) || 0), now = Date.now();
+      cache.put(k, String(now), 3600);
+      if (last) {
+        const minutes = Math.min(now - last, 30000) / 60000;
+        const u = findUser_(s.phone);
+        if (u && minutes > 0) getDb().getSheetByName('Users').getRange(u.row, 6).setValue(Math.round((u.studyTime + minutes) * 100) / 100);
+      }
+    }
+  } finally { lock.releaseLock(); }
+  return true;
 }
 
-function upsertById_(sheetName, id, row) {
-  const sh = sheet_(sheetName), vals = sh.getDataRange().getValues();
-  for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === String(id)) { sh.getRange(i + 1, 1, 1, row.length).setValues([row]); return; }
-  sh.appendRow(row);
-}
-function deleteById_(sheetName, id) {
-  const sh = sheet_(sheetName), vals = sh.getDataRange().getValues();
-  for (let i = 1; i < vals.length; i++) if (String(vals[i][0]) === String(id)) { sh.deleteRow(i + 1); return; }
-}
-function appendByHeader_(sh, obj) {
-  const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
-  sh.appendRow(h.map(k => obj[k] === undefined ? '' : obj[k]));
+/* =========================================================
+ * THI TRẮC NGHIỆM — đáp án chỉ lưu ở máy chủ
+ * ========================================================= */
+
+function readQuestions_() {
+  const qSheet = getDb().getSheetByName('Quizzes');
+  if (!qSheet) throw apiError_('Chưa tìm thấy Sheet [Quizzes]!', 'CONFIG');
+  const data = qSheet.getDataRange().getValues();
+  const list = [];
+  for (let i = 1; i < data.length; i++) {
+    const vId = String(data[i][1]).trim();
+    if (!vId || !isTrue_(data[i][10])) continue;
+    const correctChar = String(data[i][7]).trim().toUpperCase();
+    const options = ['A', 'B', 'C', 'D'].map((L, k) => ({ text: String(data[i][3 + k] || ''), isCorrect: correctChar === L }))
+      .filter(o => o.text.trim() !== '');
+    if (!options.some(o => o.isCorrect)) continue;
+    list.push({ quizId: String(data[i][0]), videoId: vId, question: String(data[i][2]), options: options, explanation: String(data[i][8] || '') });
+  }
+  return list;
 }
 
-function findVideo_(videoId) { return dataRows_(sheet_(SHEETS.VIDEOS)).find(v => String(v.videoId) === String(videoId)); }
-
-function extractYoutubeId_(input) {
-  if (/^[A-Za-z0-9_-]{11}$/.test(input)) return input;
-  const m = input.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/))([A-Za-z0-9_-]{11})/);
-  return m ? m[1] : '';
-}
-
-let SS_CACHE_ = null;
-function ss_() { if (!SS_CACHE_) SS_CACHE_ = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID); return SS_CACHE_; }
-function sheet_(name) {
-  assertConfig_();
-  const sh = ss_().getSheetByName(name);
-  if (!sh) throw apiError_('Thiếu trang tính ' + name + '. Hãy chạy setup() trước.', 'CONFIG');
-  return sh;
-}
-function optionalSheet_(name) { return ss_().getSheetByName(name); }
-
-function dataRows_(sh) {
-  const v = sh.getDataRange().getValues();
-  if (v.length < 2) return [];
-  const headers = v[0].map(String);
-  return v.slice(1).filter(r => r.some(c => c !== '' && c !== null)).map(r => {
-    const o = {}; headers.forEach((h, i) => { if (h) o[h] = r[i]; }); return o;
+/** Xáo đề, lưu đáp án vào bộ nhớ đệm máy chủ, chỉ gửi câu hỏi + phương án. */
+function buildExam_(s, type, videoId, questions) {
+  const key = {}, exp = {};
+  const client = questions.map((q, idx) => {
+    const opts = shuffle_(q.options.slice());
+    key[q.quizId] = opts.findIndex(o => o.isCorrect);
+    exp[q.quizId] = q.explanation;
+    return { qIndex: idx + 1, quizId: q.quizId, question: q.question, options: opts.map(o => o.text) };
   });
+  const examId = Utilities.getUuid().replace(/-/g, '');
+  CacheService.getScriptCache().put(CONFIG.EXAM_PREFIX + examId,
+    JSON.stringify({ phone: s.phone, type: type, videoId: videoId, key: key, exp: exp }), CONFIG.TTL);
+  return { success: true, examId: examId, questions: client, totalQuestions: client.length };
 }
 
-/** Chuẩn hoá SĐT: bỏ ký tự lạ, +84/84 → 0, bù số 0 đầu bị Sheet cắt mất. */
-function normalizePhone_(value) {
-  let p = String(value == null ? '' : value).replace(/\.0+$/, '').replace(/[^0-9]/g, '');
-  if (/^84[0-9]{9}$/.test(p)) p = '0' + p.slice(2);
-  if (/^[1-9][0-9]{8}$/.test(p)) p = '0' + p;
-  return p;
+/** 4. Kiểm tra modul: ngẫu nhiên tối đa 10 câu của bài học. */
+function getModuleExam(token, videoId) {
+  const s = session_(token);
+  const vid = String(videoId || '').trim();
+  const pool = shuffle_(readQuestions_().filter(q => q.videoId === vid));
+  if (!pool.length) return { success: false, message: 'Chưa có câu hỏi trắc nghiệm cho bài học này!' };
+  return buildExam_(s, 'MODUL', vid, pool.slice(0, CONFIG.MODULE_QUESTIONS));
 }
-function key_(v) { return String(v == null ? '' : v).trim().toLowerCase(); }
-function sameKey_(a, b) {
-  const x = key_(a), y = key_(b);
-  if (x === y) return true;
-  const px = normalizePhone_(x), py = normalizePhone_(y);
-  return /^0[0-9]{9}$/.test(px) && px === py && x.indexOf('@') < 0 && y.indexOf('@') < 0;
+
+/** 5. Thi hết môn: 30 câu, mỗi chủ đề tối thiểu 2 câu. */
+function getFinalExam(token) {
+  const s = session_(token);
+  const topicMap = {};
+  readQuestions_().forEach(q => (topicMap[q.videoId] = topicMap[q.videoId] || []).push(q));
+  const selected = [], rest = [];
+  Object.keys(topicMap).forEach(v => {
+    const list = shuffle_(topicMap[v]);
+    const n = Math.min(CONFIG.FINAL_PER_TOPIC, list.length);
+    selected.push.apply(selected, list.slice(0, n));
+    rest.push.apply(rest, list.slice(n));
+  });
+  shuffle_(rest);
+  while (selected.length < CONFIG.FINAL_QUESTIONS && rest.length) selected.push(rest.shift());
+  if (!selected.length) return { success: false, message: 'Ngân hàng câu hỏi đang trống!' };
+  return buildExam_(s, 'FINAL', 'TOAN_KHOA', shuffle_(selected).slice(0, CONFIG.FINAL_QUESTIONS));
 }
-function clean_(v) { return String(v == null ? '' : v).trim(); }
-function isTrue_(v) { return v === true || String(v).toLowerCase() === 'true' || String(v) === '1'; }
-function isFalse_(v) { return v === false || String(v).toLowerCase() === 'false' || String(v) === '0'; }
+
+/** 6. Chấm bài. answers = { quizId: chỉ số phương án đã chọn } */
+function submitExam(token, examId, answers) {
+  const s = session_(token);
+  const cache = CacheService.getScriptCache();
+  const raw = cache.get(CONFIG.EXAM_PREFIX + String(examId || ''));
+  if (!raw) throw apiError_('Đề thi đã hết hạn hoặc đã được nộp. Vui lòng làm lại đề mới.', 'EXAM_EXPIRED');
+  const exam = JSON.parse(raw);
+  if (exam.phone !== s.phone) throw apiError_('Đề thi không thuộc tài khoản này.', 'FORBIDDEN');
+  cache.remove(CONFIG.EXAM_PREFIX + examId); // mỗi đề chỉ nộp một lần
+
+  answers = answers || {};
+  const ids = Object.keys(exam.key);
+  const total = ids.length;
+  let correctCount = 0;
+  const detailedFeedback = {};
+  ids.forEach(id => {
+    const sel = answers[id] === undefined || answers[id] === null || answers[id] === '' ? -1 : Number(answers[id]);
+    const right = sel === exam.key[id];
+    if (right) correctCount++;
+    detailedFeedback[id] = { isRight: right, userSelected: sel, correctIndex: exam.key[id], explanation: exam.exp[id] || '' };
+  });
+  const score = Number(((correctCount / total) * 10).toFixed(1));
+  const need = exam.type === 'FINAL' ? Math.min(CONFIG.FINAL_PASS, Math.ceil(total * 2 / 3)) : Math.min(CONFIG.MODULE_PASS, Math.ceil(total * 0.7));
+  const isPassed = correctCount >= need;
+
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  let attempt = 1;
+  try {
+    const db = getDb();
+    const u = findUser_(s.phone) || { fullName: s.fullName || 'Học viên', unit: s.unit || '' };
+    const rSheet = db.getSheetByName('QuizResults');
+    readResults_().forEach(r => {
+      if (r.phone === s.phone && r.examType === exam.type && r.videoId === exam.videoId) attempt = Math.max(attempt, r.attempt + 1);
+    });
+    rSheet.appendRow(["'" + s.phone, u.fullName, u.unit, exam.type, exam.videoId, attempt, correctCount, total, score, isPassed ? 'ĐẠT' : 'CHƯA ĐẠT', nowStr_()]);
+
+    if (exam.type === 'MODUL' && isPassed) {
+      const pSheet = db.getSheetByName('Progress');
+      const pData = pSheet.getDataRange().getValues();
+      let found = false;
+      for (let k = 1; k < pData.length; k++) {
+        if (formatPhone(pData[k][0]) === s.phone && String(pData[k][1]).trim() === exam.videoId) {
+          pSheet.getRange(k + 1, 3, 1, 4).setValues([[true, true, 0, new Date()]]);
+          found = true; break;
+        }
+      }
+      if (!found) pSheet.appendRow(["'" + s.phone, exam.videoId, true, true, 0, new Date()]);
+    }
+  } finally { lock.releaseLock(); }
+
+  return { success: true, examType: exam.type, passed: isPassed, need: need, correctCount: correctCount, total: total, score: score, attempt: attempt, detailedFeedback: detailedFeedback };
+}
+
+/**
+ * Đọc QuizResults, chấp nhận cả dữ liệu cũ (10 cột, chưa có ExamType)
+ * và dữ liệu mới (11 cột, có ExamType ở cột D).
+ */
+function readResults_() {
+  const sh = getDb().getSheetByName('QuizResults');
+  if (!sh) return [];
+  const data = sh.getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i];
+    const t = String(r[3]).trim().toUpperCase();
+    const isNew = t === 'MODUL' || t === 'FINAL';
+    const o = isNew ? 0 : -1; // dữ liệu cũ lệch trái 1 cột
+    const phone = formatPhone(r[0]);
+    if (!phone) continue;
+    out.push({
+      phone: phone, fullName: String(r[1] || ''), unit: String(r[2] || ''),
+      examType: isNew ? t : 'MODUL', videoId: String(r[4 + o] || '').trim(), attempt: Number(r[5 + o]) || 1,
+      correctCount: r[6 + o], totalQuestions: r[7 + o], score: Number(r[8 + o]) || 0, status: String(r[9 + o] || ''), examTime: r[10 + o]
+    });
+  }
+  return out;
+}
+
+/* =========================================================
+ * BẢNG XẾP HẠNG & QUẢN TRỊ
+ * ========================================================= */
+
+/** 7. Bảng xếp hạng (top 10) */
+function getLeaderboard(token) {
+  session_(token);
+  const db = getDb();
+  const pData = db.getSheetByName('Progress').getDataRange().getValues();
+  const uData = db.getSheetByName('Users').getDataRange().getValues();
+  const counts = {};
+  for (let i = 1; i < pData.length; i++) if (isTrue_(pData[i][2])) { const p = formatPhone(pData[i][0]); counts[p] = (counts[p] || 0) + 1; }
+  const rows = [];
+  for (let j = 1; j < uData.length; j++) {
+    const p = formatPhone(uData[j][0]);
+    if (!p || checkIsAdmin(p)) continue;
+    rows.push({ fullName: String(uData[j][1] || ''), unit: String(uData[j][2] || ''), completedCount: counts[p] || 0, studyTime: Number(uData[j][5]) || 0 });
+  }
+  rows.sort((a, b) => b.completedCount - a.completedCount || b.studyTime - a.studyTime);
+  return rows.slice(0, 10);
+}
+
+/** 8. Ma trận 16 modul + thi hết môn để xuất Excel */
+function getMasterMatrix(token) {
+  adminSession_(token);
+  const db = getDb();
+  const uData = db.getSheetByName('Users').getDataRange().getValues();
+  const vData = videoSheet_().getDataRange().getValues();
+  const modules = [];
+  vData.slice(1).sort((a, b) => (Number(a[5]) || 0) - (Number(b[5]) || 0)).forEach(r => {
+    const id = String(r[0]).trim(); if (id && modules.indexOf(id) < 0) modules.push(id);
+  });
+  const standard = modules.slice(0, CONFIG.STANDARD_MODULES);
+  const map = {};
+  readResults_().forEach(r => {
+    const m = map[r.phone] = map[r.phone] || { modules: {}, finalScore: '', finalExamTime: '' };
+    if (r.examType === 'MODUL') { if (m.modules[r.videoId] === undefined || r.score > m.modules[r.videoId]) m.modules[r.videoId] = r.score; }
+    else if (r.examType === 'FINAL') {
+      if (m.finalScore === '' || r.score >= m.finalScore) { m.finalScore = r.score; m.finalExamTime = fmtDate_(r.examTime); }
+    }
+  });
+  const rows = [];
+  let stt = 1;
+  for (let i = 1; i < uData.length; i++) {
+    const phone = formatPhone(uData[i][0]);
+    if (!phone) continue;
+    const info = map[phone] || { modules: {}, finalScore: '', finalExamTime: '' };
+    rows.push({
+      stt: stt++, phone: phone, fullName: String(uData[i][1] || ''), unit: String(uData[i][2] || ''),
+      moduleScores: standard.map(id => info.modules[id] !== undefined ? info.modules[id] : ''),
+      finalScore: info.finalScore, firstLogin: fmtDate_(uData[i][4]), finalExamTime: info.finalExamTime
+    });
+  }
+  return { moduleHeaders: standard, rows: rows };
+}
+
+/** 9. Dữ liệu trang quản trị */
+function getAdminData(token) {
+  adminSession_(token);
+  const db = getDb();
+  const uData = db.getSheetByName('Users').getDataRange().getValues();
+  const vData = videoSheet_().getDataRange().getValues();
+  const users = [];
+  for (let i = 1; i < uData.length; i++) {
+    const phone = formatPhone(uData[i][0]);
+    if (!phone) continue;
+    users.push({ phone: phone, fullName: String(uData[i][1] || ''), unit: String(uData[i][2] || ''), email: String(uData[i][3] || ''),
+                 registerDate: fmtDate_(uData[i][4], 'dd/MM/yyyy HH:mm'), totalStudyTime: Math.round(Number(uData[i][5]) || 0) });
+  }
+  const videos = [];
+  for (let j = 1; j < vData.length; j++) {
+    if (!String(vData[j][0]).trim()) continue;
+    videos.push({ id: String(vData[j][0]), category: String(vData[j][1] || '').trim(), title: String(vData[j][2] || '').trim(),
+                  youtubeKey: String(vData[j][3] || ''), order: Number(vData[j][5]) || j, active: !(vData[j][6] === false || String(vData[j][6]).toUpperCase() === 'FALSE') });
+  }
+  videos.sort((a, b) => a.order - b.order);
+  const results = readResults_().reverse().map(r => Object.assign({}, r, { examTime: fmtDate_(r.examTime, 'dd/MM/yyyy HH:mm') }));
+  return { users: users, videos: videos, results: results };
+}
+
+function saveVideoAdmin(token, video) {
+  adminSession_(token);
+  video = video || {};
+  const title = String(video.title || '').trim();
+  const ytKey = extractYoutubeId_(video.youtubeKey);
+  if (!title || !ytKey) throw apiError_('Vui lòng điền đủ tên bài học và link YouTube!', 'BAD_INPUT');
+  const sheet = videoSheet_();
+  const data = sheet.getDataRange().getValues();
+  const id = String(video.id || '').trim();
+  for (let i = 1; id && i < data.length; i++) {
+    if (String(data[i][0]) === id) {
+      sheet.getRange(i + 1, 2, 1, 3).setValues([[String(video.category || ''), title, ytKey]]);
+      sheet.getRange(i + 1, 6).setValue(Number(video.order) || i);
+      return { id: id, updated: true };
+    }
+  }
+  let max = 0;
+  data.forEach(r => { const m = String(r[0]).match(/^VID(\d+)$/); if (m) max = Math.max(max, Number(m[1])); });
+  const newId = 'VID' + String(max + 1).padStart(3, '0');
+  sheet.appendRow([newId, String(video.category || ''), title, ytKey, title, Number(video.order) || data.length, true, true]);
+  return { id: newId, created: true };
+}
+
+function deleteVideoAdmin(token, videoId) {
+  adminSession_(token);
+  const sheet = videoSheet_();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(videoId)) { sheet.deleteRow(i + 1); return true; }
+  }
+  return false;
+}

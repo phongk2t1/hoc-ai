@@ -1,20 +1,21 @@
-/* Học AI mỗi ngày — giao diện chạy trên GitHub Pages, gọi API Google Apps Script. */
+/* Học AI cùng thầy giáo Nguyễn Phong — giao diện GitHub Pages gọi API Google Apps Script. */
 'use strict';
 
 const CFG = window.APP_CONFIG || {};
-const TOKEN_KEY = 'aimaster_session';
+const LS_TOKEN = 'hocai_token';
+const LS_PHONE = 'study_user_phone';
 
-let token = '', user = null, videos = [], current = null;
-let player = null, playerReady = false, watchTimer = null, lastServerPosition = 0, lastSaved = 0;
-let quizQuestions = [], adminData = null, passScore = 70;
+let token = '', currentUser = null, videoList = [], currentVideo = null;
+let player = null, isPlayerReady = false, pendingVideo = null;
+let maxTimeViewed = 0, checkInterval = null, heartbeatInterval = null;
+let currentExam = null, isSidebarCollapsed = false, adminCache = null;
 
-/* ---------------- API ---------------- */
+/* ================= API ================= */
 
 function apiConfigured() {
-  return CFG.API_URL && /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec/.test(CFG.API_URL) && CFG.API_URL.indexOf('DAN_URL') < 0;
+  return /^https:\/\/script\.google\.com\/(a\/[^/]+\/)?macros\/s\/[^/]+\/exec/.test(CFG.API_URL || '') && CFG.API_URL.indexOf('DAN_URL') < 0;
 }
 
-/** Gọi hàm trong Code.gs. Dùng text/plain để không phát sinh CORS preflight. */
 async function api(action, ...args) {
   if (!apiConfigured()) throw new Error('Chưa cấu hình API_URL trong config.js.');
   let res;
@@ -24,486 +25,443 @@ async function api(action, ...args) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, args }),
       redirect: 'follow',
-      keepalive: action === 'recordWatch'
+      keepalive: action === 'saveProgress'
     });
-  } catch (e) {
-    throw new Error('Không kết nối được máy chủ. Kiểm tra mạng hoặc URL Web App.');
-  }
+  } catch (e) { throw new Error('Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.'); }
   let json;
-  try { json = await res.json(); }
-  catch (e) { throw new Error('Máy chủ trả về dữ liệu không hợp lệ. Kiểm tra quyền truy cập Web App ("Anyone").'); }
+  try { json = await res.json(); } catch (e) { throw new Error('Máy chủ phản hồi không hợp lệ. Kiểm tra quyền truy cập Web App ("Anyone").'); }
   if (!json.ok) {
     const err = new Error(json.error || 'Lỗi không xác định.');
     err.code = json.code || '';
-    if (err.code === 'SESSION' && action !== 'getBootstrap') { toast(err.message, true); signOut(true); }
+    if (err.code === 'SESSION' && token) onSessionExpired();
     throw err;
   }
   return json.data;
 }
 
-/* ---------------- KHỞI ĐỘNG ---------------- */
+/* ================= KHỞI ĐỘNG ================= */
 
 window.addEventListener('DOMContentLoaded', async () => {
-  if (CFG.TEACHER_IMAGE_URL) {
-    ['teacherPhoto', 'teacherThumb'].forEach(id => { const im = $(id); im.src = CFG.TEACHER_IMAGE_URL; im.classList.remove('hidden'); });
-    $('photoPlaceholder').classList.add('hidden');
-  }
-  const mail = CFG.CONTACT_EMAIL || '';
-  $('contactLink').href = mail ? 'mailto:' + mail : '#';
-  $('contactLink').textContent = '✉ ' + mail;
-  if (!apiConfigured()) { $('apiWarn').classList.remove('hidden'); return; }
+  const img = $('teacherImg');
+  img.onerror = () => { img.onerror = null; img.src = 'https://ui-avatars.com/api/?name=Nguyen+Phong&background=0D8ABC&color=fff&size=128'; };
+  img.src = CFG.TEACHER_IMAGE_URL || 'https://ui-avatars.com/api/?name=Nguyen+Phong&background=0D8ABC&color=fff&size=128';
+  if (CFG.CONTACT_EMAIL) { $('contactLink').href = 'mailto:' + CFG.CONTACT_EMAIL; $('contactLink').textContent = '✉ ' + CFG.CONTACT_EMAIL; }
+  $('authModal').addEventListener('shown.bs.modal', () => {
+    const el = ['inputAdminPin', 'regName', 'inputPhone'].map($).find(e => e.closest('form').style.display !== 'none');
+    if (el) el.focus();
+  });
 
-  const saved = sessionStorage.getItem(TOKEN_KEY);
-  if (saved) {
-    msg('loginMsg', 'Đang khôi phục phiên đăng nhập...');
-    try { onBootstrap(await api('getBootstrap', saved)); }
-    catch (e) { sessionStorage.removeItem(TOKEN_KEY); msg('loginMsg', ''); }
+  if (!apiConfigured()) { $('apiWarn').classList.remove('d-none'); $('videoList').innerHTML = '<div class="p-3 text-danger small">Chưa cấu hình API.</div>'; return; }
+
+  const savedToken = localStorage.getItem(LS_TOKEN);
+  const savedPhone = localStorage.getItem(LS_PHONE);
+  if (savedToken) {
+    try { setUser(await api('resume', savedToken)); return; }
+    catch (e) { localStorage.removeItem(LS_TOKEN); token = ''; }
   }
+  if (savedPhone) {
+    try {
+      const res = await api('authenticate', savedPhone, '');
+      if (res.requirePin) { showLoginModal(); $('inputPhone').value = savedPhone; showStep('stepAdminPin'); }
+      else if (res.exists) { setUser(res); return; }
+    } catch (e) { /* bỏ qua, cho đăng nhập lại */ }
+  }
+  loadCourseVideos();
+  applyLockState();
 });
 
-async function loginByPhone() {
-  const phone = String(val('phoneLogin') || '').replace(/[^0-9]/g, '');
-  if (!/^0[0-9]{9}$/.test(phone)) { msg('loginMsg', 'Vui lòng nhập số điện thoại gồm 10 chữ số.'); return; }
-  const pass = val('adminPass');
-  msg('loginMsg', 'Đang kiểm tra số điện thoại...');
-  busy('loginBtn', true);
+/* ================= ĐĂNG NHẬP ================= */
+
+function showStep(id) { ['stepPhone', 'stepAdminPin', 'stepRegister'].forEach(s => $(s).style.display = s === id ? 'block' : 'none'); }
+function showLoginModal() { showStep('stepPhone'); bootstrap.Modal.getOrCreateInstance($('authModal')).show(); }
+function closeModal(id) { const m = bootstrap.Modal.getInstance($(id)); if (m) m.hide(); }
+
+async function verifyPhone() {
+  const phone = $('inputPhone').value.trim();
+  if (!phone) { toast('Vui lòng nhập số điện thoại!', true); return; }
+  await withBusy('btnPhoneNext', 'Đang kiểm tra...', async () => {
+    const res = await api('authenticate', phone, '');
+    if (res.requirePin) showStep('stepAdminPin');
+    else if (res.exists) { setUser(res); closeModal('authModal'); }
+    else showStep('stepRegister');
+    setTimeout(() => { const f = res.requirePin ? 'inputAdminPin' : 'regName'; if (!res.exists || res.requirePin) $(f).focus(); }, 50);
+  });
+}
+
+async function verifyAdminPin() {
+  const phone = $('inputPhone').value.trim();
+  const pin = $('inputAdminPin').value.trim();
+  if (!pin) { toast('Vui lòng nhập mã xác nhận bảo mật!', true); return; }
+  await withBusy('btnConfirmPin', 'Đang xác thực...', async () => {
+    try {
+      const res = await api('authenticate', phone, pin);
+      if (res.exists && !res.requirePin) { setUser(res); closeModal('authModal'); }
+      else if (!res.exists) showStep('stepRegister');
+    } finally { $('inputAdminPin').value = ''; }
+  });
+}
+
+async function completeRegistration() {
+  const data = { phone: $('inputPhone').value.trim(), fullName: $('regName').value.trim(), unit: $('regUnit').value.trim(), email: $('regEmail').value.trim() };
+  if (!data.fullName || !data.unit) { toast('Vui lòng điền họ tên và đơn vị!', true); return; }
+  await withBusy('btnRegisterSubmit', 'Đang lưu...', async () => {
+    setUser(await api('register', data, ''));
+    closeModal('authModal');
+  });
+}
+
+function setUser(res) {
+  if (!res || !res.user) return;
+  token = res.token; currentUser = res.user;
+  localStorage.setItem(LS_TOKEN, token);
+  localStorage.setItem(LS_PHONE, currentUser.phone);
+  $('userHeaderPanel').innerHTML = '<div class="text-end"><span class="badge bg-light text-dark me-2">Xin chào: <b>' + esc(currentUser.fullName) + '</b>' +
+    (currentUser.isAdmin ? ' <i class="fa-solid fa-crown text-warning"></i>' : '') +
+    '</span><button class="btn btn-sm btn-outline-light" onclick="logout()" title="Đăng xuất"><i class="fa-solid fa-right-from-bracket"></i></button></div>';
+  document.body.classList.toggle('is-admin', !!currentUser.isAdmin);
+  if (currentUser.isAdmin) $('studyAlertText').innerHTML = '<i class="fa-solid fa-crown text-warning me-1"></i> <b>Chế độ Quản trị:</b> Bạn có quyền xem, tua nhanh và kiểm tra modul mọi lúc.';
+  applyLockState();
+  currentVideo = null;
+  loadCourseVideos();
+}
+
+function onSessionExpired() {
+  token = ''; currentUser = null;
+  localStorage.removeItem(LS_TOKEN);
+  document.body.classList.remove('is-admin');
+  toast('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', true);
+  setTimeout(() => location.reload(), 1500);
+}
+
+async function logout() {
+  saveProgressNow(false);
+  const t = token;
+  localStorage.removeItem(LS_TOKEN);
+  localStorage.removeItem(LS_PHONE);
+  try { if (t) await api('logout', t); } catch (e) {}
+  location.reload();
+}
+
+function applyLockState() {
+  $('guestLockScreen').style.display = currentUser ? 'none' : 'flex';
+  if (!currentUser && player && typeof player.pauseVideo === 'function') player.pauseVideo();
+}
+
+function toggleSidebarMenu() {
+  isSidebarCollapsed = !isSidebarCollapsed;
+  $('sidebarCol').style.display = isSidebarCollapsed ? 'none' : 'block';
+  $('contentCol').className = isSidebarCollapsed ? 'col-12' : 'col-lg-8';
+  $('btnOpenSidebarQuick').style.display = isSidebarCollapsed ? 'inline-block' : 'none';
+}
+
+/* ================= BÀI HỌC ================= */
+
+async function loadCourseVideos() {
   try {
-    onBootstrap(await api('loginWithPhone', phone, pass));
-    setv('adminPass', '');
-  } catch (e) {
-    if (e.code === 'ADMIN_PASSWORD_REQUIRED') { $('adminPass').classList.remove('hidden'); $('adminPass').focus(); }
-    msg('loginMsg', e.message);
-  } finally { busy('loginBtn', false); }
+    const data = await api('getCourseData', token);
+    videoList = data.videos || [];
+    $('videoCountBadge').innerText = videoList.length + ' bài';
+    renderVideoList();
+    if (videoList.length && !currentVideo) {
+      const next = videoList.find(v => !v.completed) || videoList[0];
+      selectVideo(next);
+    }
+  } catch (e) { $('videoList').innerHTML = '<div class="p-3 text-danger small">' + esc(e.message) + '</div>'; }
 }
 
-function onBootstrap(d) {
-  token = d.sessionToken || token;
-  sessionStorage.setItem(TOKEN_KEY, token);
-  user = d.user; videos = d.videos || []; passScore = d.passScore || 70;
-  $('userPill').innerHTML = esc(user.name || user.phone) + '　' + (user.role === 'admin' ? '<b class="gold">Quản trị viên</b>' : '') + ' <button class="outline" onclick="signOut()">Đăng xuất</button>';
-  msg('loginMsg', 'Đã đăng nhập bằng số điện thoại: ' + user.phone);
-  $('loginArea').classList.add('hidden');
-  $('course').classList.remove('hidden');
-  $('adminNav').classList.toggle('hidden', user.role !== 'admin');
-  $('exportNav').classList.toggle('hidden', user.role !== 'admin');
-  renderAll();
+function renderVideoList() {
+  const box = $('videoList');
+  box.innerHTML = '';
+  if (!videoList.length) { box.innerHTML = '<div class="p-3 text-muted">Chưa có bài học nào trong hệ thống.</div>'; return; }
+  videoList.forEach((v, i) => {
+    const item = document.createElement('div');
+    item.className = 'list-group-item list-group-item-action video-item p-3' + (currentVideo && currentVideo.id === v.id ? ' active' : '');
+    let badge = '<i class="fa-regular fa-circle text-muted fs-5"></i>';
+    if (v.completed) badge = '<i class="fa-solid fa-circle-check text-success fs-5" title="Đã hoàn thành"></i>';
+    else if (v.resumeTime > 10) badge = '<i class="fa-solid fa-circle-half-stroke text-warning fs-5" title="Đang học dở"></i>';
+    item.innerHTML = '<div class="d-flex justify-content-between align-items-center gap-2"><div><span class="badge bg-secondary mb-1 text-wrap text-start">' + esc(v.category) +
+      '</span><h6 class="mb-1">' + (i + 1) + '. ' + esc(v.title) + '</h6></div><span>' + badge + '</span></div>';
+    item.onclick = () => selectVideo(v);
+    box.appendChild(item);
+  });
 }
 
-async function refreshApp() {
-  try { const d = await api('getBootstrap', token); videos = d.videos || []; renderAll(); }
+function canSkip() { return currentUser && (currentUser.isAdmin || (currentVideo && currentVideo.completed)); }
+
+function selectVideo(video) {
+  saveProgressNow(false);
+  currentVideo = video;
+  renderVideoList();
+  $('currentVideoTitle').innerText = video.title;
+  $('moduleQuizTriggerArea').style.display = (currentUser && (currentUser.isAdmin || video.completed)) ? 'block' : 'none';
+
+  const resumeSec = (!video.completed && video.resumeTime > 5) ? video.resumeTime : 0;
+  maxTimeViewed = resumeSec;
+  const rn = $('resumeNotice');
+  rn.style.display = resumeSec > 0 ? 'block' : 'none';
+  if (resumeSec > 0) rn.innerHTML = '<i class="fa-solid fa-clock-rotate-left me-1"></i> Tự động học tiếp từ phút thứ <b>' + fmt(resumeSec) + '</b>';
+
+  if (!currentUser) { applyLockState(); return; }
+  if (!video.youtubeId) { toast('Bài học này chưa có video.', true); return; }
+  if (isPlayerReady) player.loadVideoById({ videoId: video.youtubeId, startSeconds: resumeSec });
+  else pendingVideo = { id: video.youtubeId, start: resumeSec };
+  startProgressLock();
+  startHeartbeat();
+}
+
+/* ================= VIDEO ================= */
+
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player('player', {
+    height: '100%', width: '100%', videoId: '',
+    playerVars: { playsinline: 1, rel: 0, modestbranding: 1, controls: 1, origin: location.origin },
+    events: {
+      onReady: () => {
+        isPlayerReady = true;
+        if (pendingVideo) { player.loadVideoById({ videoId: pendingVideo.id, startSeconds: pendingVideo.start }); pendingVideo = null; }
+      },
+      onStateChange: onPlayerStateChange
+    }
+  });
+}
+window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+
+function startProgressLock() {
+  if (checkInterval) clearInterval(checkInterval);
+  checkInterval = setInterval(() => {
+    if (!player || typeof player.getCurrentTime !== 'function') return;
+    const cur = player.getCurrentTime(), dur = player.getDuration();
+    if (cur > 0 && dur > 0) $('videoTimer').innerText = fmt(cur) + ' / ' + fmt(dur);
+    if (canSkip()) return;
+    if (cur > maxTimeViewed + 2) player.seekTo(maxTimeViewed, true);
+    else maxTimeViewed = Math.max(maxTimeViewed, cur);
+    if (dur > 0 && maxTimeViewed >= dur - 3) $('moduleQuizTriggerArea').style.display = 'block';
+  }, 500);
+}
+
+function startHeartbeat() {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval = setInterval(() => {
+    if (player && typeof player.getPlayerState === 'function' && player.getPlayerState() === 1) saveProgressNow(true);
+  }, 15000);
+}
+
+function saveProgressNow(playing) {
+  if (!currentUser || !currentVideo || !player || typeof player.getCurrentTime !== 'function') return;
+  const sec = player.getCurrentTime();
+  if (sec > 5) api('saveProgress', token, currentVideo.id, sec, !!playing).catch(() => {});
+  if (!currentVideo.completed) currentVideo.resumeTime = Math.floor(sec);
+}
+
+function onPlayerStateChange(ev) {
+  if (ev.data === YT.PlayerState.PAUSED) saveProgressNow(false);
+  if (ev.data === YT.PlayerState.ENDED) { saveProgressNow(false); $('moduleQuizTriggerArea').style.display = 'block'; }
+}
+
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveProgressNow(false); });
+
+/* ================= THI TRẮC NGHIỆM ================= */
+
+function requireLogin(msg) { if (currentUser) return true; toast(msg, true); showLoginModal(); return false; }
+
+async function startModuleExam() {
+  if (!requireLogin('Vui lòng đăng nhập để làm bài kiểm tra!') || !currentVideo) return;
+  openExamModal('MODUL', 'bg-success', '<i class="fa-solid fa-graduation-cap me-2"></i> KIỂM TRA HOÀN THÀNH MODUL', currentVideo.title, '7/10 câu');
+  try { showExam(await api('getModuleExam', token, currentVideo.id), 'MODUL'); }
+  catch (e) { $('quizQuestionsContainer').innerHTML = '<div class="alert alert-danger">Lỗi: ' + esc(e.message) + '</div>'; }
+}
+
+async function startFinalExam() {
+  if (!requireLogin('Vui lòng đăng nhập để tham gia thi hết môn!')) return;
+  openExamModal('FINAL', 'bg-danger', '<i class="fa-solid fa-award me-2"></i> BÀI THI HẾT MÔN TOÀN KHÓA (30 CÂU)', 'Tổng hợp các chủ đề khóa học AI', '20/30 câu (Không giới hạn thời gian)');
+  try { showExam(await api('getFinalExam', token), 'FINAL'); }
+  catch (e) { $('quizQuestionsContainer').innerHTML = '<div class="alert alert-danger">Lỗi tạo đề thi: ' + esc(e.message) + '</div>'; }
+}
+
+function openExamModal(type, headerCls, title, lesson, cond) {
+  currentExam = null;
+  $('quizModalHeader').className = 'modal-header text-white ' + headerCls;
+  $('quizModalTitle').innerHTML = title;
+  $('quizModalLessonTitle').innerText = lesson;
+  $('quizModalPassCond').innerText = cond;
+  $('examResultBanner').style.display = 'none';
+  $('quizQuestionsContainer').innerHTML = '<div class="text-center py-5"><i class="fa-solid fa-spinner fa-spin fa-2x text-primary"></i><p class="mt-2 text-muted">Đang tải và xáo trộn ngẫu nhiên đề thi từ ngân hàng câu hỏi...</p></div>';
+  const b = $('btnSubmitQuizAnswers'); b.style.display = 'inline-block'; b.disabled = false; b.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> NỘP BÀI THI';
+  bootstrap.Modal.getOrCreateInstance($('quizModal')).show();
+}
+
+function showExam(res, type) {
+  const box = $('quizQuestionsContainer');
+  if (!res.success) { box.innerHTML = '<div class="alert alert-warning">' + esc(res.message) + '</div>'; $('btnSubmitQuizAnswers').style.display = 'none'; return; }
+  currentExam = { id: res.examId, type: type, questions: res.questions };
+  if (type === 'MODUL') $('quizModalPassCond').innerText = Math.min(7, Math.ceil(res.totalQuestions * 0.7)) + '/' + res.totalQuestions + ' câu';
+  else $('quizModalPassCond').innerText = Math.min(20, Math.ceil(res.totalQuestions * 2 / 3)) + '/' + res.totalQuestions + ' câu (Không giới hạn thời gian)';
+  box.innerHTML = res.questions.map((q, qi) => {
+    const name = 'q_' + qi;
+    const opts = q.options.map((t, oi) =>
+      '<label class="quiz-option-label mb-1" id="lbl_' + qi + '_' + oi + '"><input type="radio" class="form-check-input me-2" name="' + name + '" value="' + oi + '"> <b>' +
+      String.fromCharCode(65 + oi) + '.</b> ' + esc(t) + '</label>').join('');
+    return '<div class="quiz-question-box" id="box_' + qi + '"><h6 class="fw-bold text-dark mb-2">Câu ' + (qi + 1) + ': ' + esc(q.question) + '</h6><div class="ps-2">' + opts +
+      '</div><div class="quiz-explanation mt-2 text-muted small" id="exp_' + qi + '" style="display:none;"></div></div>';
+  }).join('');
+}
+
+async function submitAnswers() {
+  if (!currentExam) return;
+  const answers = {};
+  let unanswered = 0;
+  currentExam.questions.forEach((q, qi) => {
+    const c = document.querySelector('input[name="q_' + qi + '"]:checked');
+    if (c) answers[q.quizId] = Number(c.value); else unanswered++;
+  });
+  if (unanswered && !confirm('Bạn còn ' + unanswered + ' câu chưa trả lời. Bạn có chắc chắn muốn nộp bài không?')) return;
+
+  const exam = currentExam;
+  await withBusy('btnSubmitQuizAnswers', 'Đang chấm điểm...', async () => {
+    const r = await api('submitExam', token, exam.id, answers);
+    currentExam = null;
+    $('btnSubmitQuizAnswers').style.display = 'none';
+    const banner = $('examResultBanner');
+    banner.style.display = 'block';
+    const line = 'Kết quả: <b>' + r.correctCount + '/' + r.total + '</b> câu đúng (' + r.score + ' điểm) • Lần thi thứ: <b>' + r.attempt + '</b>';
+    if (r.passed) {
+      banner.className = 'alert alert-success py-3 text-center mb-3 shadow-sm';
+      banner.innerHTML = '<h4 class="fw-bold text-success mb-1"><i class="fa-solid fa-circle-check me-2"></i>CHÚC MỪNG BẠN ĐÃ ĐẠT!</h4><p class="mb-0 fs-5">' + line + '</p>';
+      if (exam.type === 'MODUL' && currentVideo) { currentVideo.completed = true; currentVideo.resumeTime = 0; renderVideoList(); }
+    } else {
+      banner.className = 'alert alert-danger py-3 text-center mb-3 shadow-sm';
+      banner.innerHTML = '<h4 class="fw-bold text-danger mb-1"><i class="fa-solid fa-triangle-exclamation me-2"></i>KẾT QUẢ: CHƯA ĐẠT YÊU CẦU</h4><p class="mb-1 fs-5">' + line + '</p><small class="text-danger fw-semibold">' +
+        (exam.type === 'FINAL' ? 'Yêu cầu tối thiểu từ ' + r.need + '/' + r.total + ' câu đúng. Bạn hãy ôn lại các bài học và bấm THI LẠI!' : 'Yêu cầu tối thiểu từ ' + r.need + '/' + r.total + ' câu đúng. Vui lòng xem lại video để thi lại!') + '</small>';
+      if (exam.type === 'MODUL' && currentVideo && !currentUser.isAdmin && !currentVideo.completed) {
+        maxTimeViewed = 0;
+        $('moduleQuizTriggerArea').style.display = 'none';
+        if (player && player.seekTo) { player.seekTo(0, true); player.playVideo(); }
+        renderVideoList();
+      }
+    }
+    exam.questions.forEach((q, qi) => {
+      const fb = r.detailedFeedback[q.quizId];
+      if (!fb) return;
+      $('box_' + qi).className = 'quiz-question-box ' + (fb.isRight ? 'is-correct' : 'is-wrong');
+      if (!fb.isRight && fb.userSelected >= 0) { const w = $('lbl_' + qi + '_' + fb.userSelected); if (w) w.className = 'quiz-option-label opt-wrong'; }
+      const ok = $('lbl_' + qi + '_' + fb.correctIndex); if (ok) ok.className = 'quiz-option-label opt-correct';
+      document.querySelectorAll('input[name="q_' + qi + '"]').forEach(i => i.disabled = true);
+      if (fb.explanation) { const ex = $('exp_' + qi); ex.style.display = 'block'; ex.innerHTML = '<i class="fa-solid fa-circle-info text-primary me-1"></i> <b>Giải thích:</b> ' + esc(fb.explanation); }
+    });
+    document.querySelector('#quizModal .modal-body').scrollTop = 0;
+  });
+}
+
+/* ================= BẢNG XẾP HẠNG & QUẢN TRỊ ================= */
+
+async function openLeaderboard() {
+  try {
+    const data = await api('getLeaderboard', token);
+    $('leaderboardBody').innerHTML = data.length ? data.map((u, i) =>
+      '<tr><td><b>#' + (i + 1) + '</b></td><td>' + esc(u.fullName) + '</td><td>' + esc(u.unit) + '</td><td><span class="badge bg-success">' + u.completedCount + ' bài</span></td></tr>').join('')
+      : '<tr><td colspan="4" class="text-muted">Chưa có dữ liệu.</td></tr>';
+    bootstrap.Modal.getOrCreateInstance($('leaderboardModal')).show();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function openAdminModal(keepOpen) {
+  try {
+    adminCache = await api('getAdminData', token);
+    renderAdminResults();
+    $('adminUserCount').innerText = 'Tổng số học viên: ' + adminCache.users.length;
+    $('adminUserListTable').innerHTML = adminCache.users.map(u =>
+      '<tr><td>' + esc(u.fullName) + '</td><td>' + esc(u.phone) + '</td><td>' + esc(u.unit) + '</td><td>' + esc(u.email) + '</td><td>' + esc(u.registerDate) + '</td><td>' + esc(u.totalStudyTime) + '</td></tr>').join('');
+    renderAdminVideoTable(adminCache.videos);
+    if (!keepOpen) bootstrap.Modal.getOrCreateInstance($('adminModal')).show();
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderAdminResults() {
+  if (!adminCache) return;
+  const f = ($('resultFilter').value || '').toLowerCase().trim();
+  const rows = adminCache.results.filter(r => !f || (r.fullName + ' ' + r.phone + ' ' + r.unit + ' ' + r.videoId + ' ' + r.examType).toLowerCase().includes(f));
+  $('adminResultsTableBody').innerHTML = rows.length ? rows.map(r =>
+    '<tr><td class="text-start fw-bold">' + esc(r.fullName) + '</td><td>' + esc(r.phone) + '</td><td class="text-start small">' + esc(r.unit) + '</td>' +
+    '<td><span class="badge ' + (r.examType === 'FINAL' ? 'bg-danger' : 'bg-primary') + '">' + esc(r.examType) + '</span></td>' +
+    '<td><span class="badge bg-secondary">' + esc(r.videoId) + '</span></td><td>' + esc(r.attempt) + '</td><td><b>' + esc(r.correctCount) + '/' + esc(r.totalQuestions) + '</b></td>' +
+    '<td><span class="badge bg-info text-dark">' + esc(r.score) + '</span></td><td><span class="badge ' + (r.status === 'ĐẠT' ? 'bg-success' : 'bg-danger') + '">' + esc(r.status) + '</span></td>' +
+    '<td class="small">' + esc(r.examTime) + '</td></tr>').join('')
+    : '<tr><td colspan="10" class="text-muted">Chưa có dữ liệu thi nào.</td></tr>';
+}
+
+function renderAdminVideoTable(list) {
+  const tb = $('adminVideoListTable');
+  tb.innerHTML = '';
+  list.forEach(v => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + esc(v.order) + '</td><td><code>' + esc(v.id) + '</code></td><td>' + esc(v.category) + '</td><td>' + esc(v.title) + (v.active ? '' : ' <span class="badge bg-secondary">Ẩn</span>') +
+      '</td><td><code>' + esc(v.youtubeKey) + '</code></td><td class="text-nowrap"></td>';
+    const act = tr.lastChild;
+    const edit = document.createElement('button'); edit.className = 'btn btn-sm btn-outline-primary me-1'; edit.title = 'Sửa'; edit.innerHTML = '<i class="fa-solid fa-pen"></i>';
+    edit.onclick = () => { $('adminVideoId').value = v.id; $('adminVideoCat').value = v.category; $('adminVideoTitle').value = v.title; $('adminVideoKey').value = v.youtubeKey; $('adminVideoOrder').value = v.order; $('adminVideoEditing').innerHTML = 'Đang sửa bài <b>' + esc(v.id) + '</b> · <a href="#" onclick="clearVideoForm();return false;">Hủy, thêm bài mới</a>'; $('adminVideoTitle').focus(); };
+    const del = document.createElement('button'); del.className = 'btn btn-sm btn-danger'; del.title = 'Xóa'; del.innerHTML = '<i class="fa-solid fa-trash"></i>';
+    del.onclick = () => deleteVideo(v);
+    act.append(edit, del);
+    tb.appendChild(tr);
+  });
+}
+
+function clearVideoForm() {
+  ['adminVideoId', 'adminVideoCat', 'adminVideoTitle', 'adminVideoKey'].forEach(id => $(id).value = '');
+  $('adminVideoOrder').value = (adminCache ? adminCache.videos.length : 0) + 1;
+  $('adminVideoEditing').innerHTML = '';
+}
+
+async function saveAdminVideo() {
+  const video = { id: $('adminVideoId').value, title: $('adminVideoTitle').value.trim(), category: $('adminVideoCat').value.trim(), youtubeKey: $('adminVideoKey').value.trim(), order: $('adminVideoOrder').value };
+  if (!video.title || !video.youtubeKey) { toast('Vui lòng điền đủ tên bài học và link YouTube!', true); return; }
+  await withBusy('btnAdminSave', '...', async () => {
+    const r = await api('saveVideoAdmin', token, video);
+    toast(r.created ? 'Đã thêm bài học ' + r.id + '.' : 'Đã cập nhật bài học ' + r.id + '.');
+    clearVideoForm();
+    await openAdminModal(true);
+    currentVideo = currentVideo && videoList.find(x => x.id === currentVideo.id) ? currentVideo : null;
+    loadCourseVideos();
+  });
+}
+
+async function deleteVideo(v) {
+  if (!confirm('Bạn có chắc chắn muốn xóa bài học "' + v.title + '"?')) return;
+  try { await api('deleteVideoAdmin', token, v.id); toast('Đã xóa bài học.'); await openAdminModal(true); loadCourseVideos(); }
   catch (e) { toast(e.message, true); }
 }
 
-/* ---------------- LỘ TRÌNH ---------------- */
-
-function isFree() { return user && (user.role === 'admin' || (current && current.status === 'completed')); }
-
-function renderAll() {
-  renderLessons(); updateStats();
-  if (!current) { const first = videos.find(v => v.status !== 'completed') || videos[0]; if (first) selectVideo(first.videoId); }
-  else { const v = videos.find(x => x.videoId === current.videoId); if (v) { current = v; renderIntro(); } }
-}
-
-function renderLessons() {
-  const el = $('lessonList'); el.innerHTML = '';
-  const search = (val('searchLessons') || '').toLowerCase();
-  let last = '';
-  videos.filter(v => (v.title + ' ' + v.topic).toLowerCase().includes(search)).forEach(v => {
-    if (v.topic !== last) { const t = document.createElement('div'); t.className = 'topic'; t.textContent = v.topic || 'BÀI HỌC'; el.appendChild(t); last = v.topic; }
-    const b = document.createElement('button');
-    b.className = 'lesson' + (current && current.videoId === v.videoId ? ' selected' : '');
-    b.onclick = () => selectVideo(v.videoId);
-    const check = document.createElement('span'); check.className = 'check'; check.textContent = v.status === 'completed' ? '✓' : '▶';
-    const body = document.createElement('span'); body.className = 'lessonbody';
-    const sm = document.createElement('small'); sm.textContent = 'Bài ' + v.sortOrder + (v.bestScore ? ' · Điểm cao nhất ' + v.bestScore : '');
-    const strong = document.createElement('strong'); strong.textContent = v.title;
-    const em = document.createElement('em');
-    em.textContent = v.status === 'completed' ? '✓ Đã hoàn thành · Cho phép tua' : user && user.role === 'admin' ? 'Quản trị viên · Tua tự do' : '◉ Chưa hoàn thành · Đã xem ' + Math.round((v.watchRatio || 0) * 100) + '%';
-    body.append(sm, strong, em); b.append(check, body); el.appendChild(b);
-  });
-  $('courseStats').textContent = videos.length + ' bài học';
-  $('lessonCounts').textContent = 'Tất cả (' + videos.length + ')';
-  $('completedCount').textContent = videos.filter(v => v.status === 'completed').length + ' đã xong';
-}
-
-function updateStats() {
-  const done = videos.filter(v => v.status === 'completed').length;
-  const ratio = videos.length ? Math.round(done / videos.length * 100) : 0;
-  $('sideProgress').textContent = ratio + '%';
-  $('heroProgress').textContent = ratio + '%';
-  $('heroLessons').textContent = done + '/' + videos.length + ' bài đã xong';
-  $('heroXP').textContent = done * 100;
-}
-
-function selectVideo(id) {
-  const v = videos.find(x => x.videoId === id); if (!v) return;
-  saveProgress('SWITCH_VIDEO');
-  current = v; lastServerPosition = Number(v.lastPosition || 0);
-  renderLessons(); renderIntro();
-  $('quizArea').classList.add('hidden');
-  loadPlayer();
-}
-
-function renderIntro() {
-  if (!current) return;
-  $('lessonIntro').innerHTML = '<div class="flex"><span class="eyebrow">' + esc(current.topic || 'LỘ TRÌNH HỌC TẬP') + '</span><span class="tag">Mã bài: ' + esc(current.videoId) + '</span><span class="tag ' + (current.status === 'completed' ? 'green' : '') + '">' + (current.status === 'completed' ? '✓ Đã hoàn thành' : 'Đang học') + '</span></div><h2>' + esc(current.title) + '</h2><p>' + esc(current.description || 'Học video theo tiến độ, hoàn thành bài kiểm tra để lưu thành tích và theo dõi lịch sử học tập.') + '</p>';
-  $('watchCard').classList.remove('hidden');
-  $('watchStatus').textContent = current.status === 'completed' ? '♧ Đã hoàn thành · Cho phép tua & xem lại tự do' : user.role === 'admin' ? '♧ Quản trị viên · Không giới hạn tua' : '♧ Chưa hoàn thành · Chỉ tua đến đoạn đã xem';
-  $('watchMessage').textContent = 'Xem tối thiểu 90% video, sau đó làm bài kiểm tra (đạt từ ' + passScore + ' điểm) để hoàn thành bài.';
-}
-
-/* ---------------- VIDEO ---------------- */
-
-function loadPlayer() {
-  if (watchTimer) clearInterval(watchTimer);
-  if (player && player.destroy) { try { player.destroy(); } catch (e) {} }
-  player = null; playerReady = false;
-  const wrap = $('playerWrap');
-  wrap.innerHTML = '<div id="player"></div>';
-  if (!current.youtubeId) { wrap.innerHTML = '<div class="empty">Quản trị viên chưa nhập link YouTube cho bài này.</div>'; return; }
-  if (!window.YT || !YT.Player) { setTimeout(loadPlayer, 400); return; }
-  player = new YT.Player('player', {
-    videoId: current.youtubeId,
-    playerVars: { playsinline: 1, rel: 0, modestbranding: 1, controls: 1, disablekb: 1, origin: location.origin },
-    events: { onReady: onPlayerReady, onStateChange: onPlayerState }
-  });
-}
-
-function onPlayerReady() {
-  playerReady = true;
-  const p = Number(current.lastPosition || 0);
-  if (p > 0) player.seekTo(isFree() ? p : Math.max(0, p - 1), true);
-  watchTimer = setInterval(tick, 1000);
-}
-
-function onPlayerState(ev) {
-  if (ev.data === YT.PlayerState.PAUSED) saveProgress('PAUSE');
-  if (ev.data === YT.PlayerState.ENDED) {
-    saveProgress('ENDED');
-    if (current.status !== 'completed') setTimeout(loadQuiz, 800);
-  }
-}
-
-function tick() {
-  if (!playerReady || !player || !current) return;
-  try {
-    const pos = player.getCurrentTime() || 0, dur = player.getDuration() || 0;
-    if (!dur) return;
-    if (!isFree() && pos > lastServerPosition + 3) { player.seekTo(Math.max(0, lastServerPosition), true); toast('Bài chưa hoàn thành — không thể tua vượt đoạn chưa xem.'); return; }
-    if (pos > lastServerPosition) lastServerPosition = pos;
-    $('watchBar').style.width = Math.min(100, pos / dur * 100) + '%';
-    $('watchTime').textContent = fmt(pos) + ' / ' + fmt(dur);
-    if (Date.now() - lastSaved > 10000) saveProgress('WATCH_PROGRESS');
-  } catch (e) {}
-}
-
-function saveProgress(eventType) {
-  if (!playerReady || !player || !current || !token) return;
-  let pos, dur;
-  try { pos = player.getCurrentTime() || 0; dur = player.getDuration() || 0; } catch (e) { return; }
-  if (!dur) return;
-  lastSaved = Date.now();
-  const v = current;
-  api('recordWatch', token, v.videoId, pos, dur, eventType).then(r => {
-    if (r && r.progress) {
-      v.lastPosition = r.progress.lastPosition; v.duration = dur; v.watchRatio = r.progress.watchRatio;
-      if (v === current && !isFree()) lastServerPosition = Math.max(lastServerPosition, Number(r.progress.lastPosition || 0));
-    }
-  }).catch(() => {});
-}
-
-window.addEventListener('beforeunload', () => saveProgress('LEAVE'));
-
-function nextVideo() {
-  const i = videos.findIndex(v => v.videoId === current.videoId);
-  if (i < videos.length - 1) selectVideo(videos[i + 1].videoId); else toast('Đây là bài cuối cùng của lộ trình.');
-}
-
-/* ---------------- BÀI KIỂM TRA ---------------- */
-
-async function loadQuiz() {
-  if (!current) return;
-  const el = $('quizArea');
-  el.classList.remove('hidden');
-  el.innerHTML = '<p class="muted">Đang tải câu hỏi...</p>';
-  try {
-    const qs = await api('getQuiz', token, current.videoId);
-    quizQuestions = qs || [];
-    el.innerHTML = '<h3>Kiểm tra nhanh sau bài học</h3>';
-    if (!quizQuestions.length) { el.innerHTML += '<p class="muted">Bài này chưa có câu hỏi. Hãy liên hệ quản trị viên.</p>'; return; }
-    quizQuestions.forEach((q, i) => {
-      const box = document.createElement('div'); box.className = 'question'; box.id = 'q_' + q.quizId;
-      const p = document.createElement('strong'); p.textContent = (i + 1) + '. ' + q.question; box.appendChild(p);
-      ['A', 'B', 'C', 'D'].forEach((letter, j) => {
-        if (!q.options[j]) return;
-        const l = document.createElement('label');
-        const inp = document.createElement('input'); inp.type = 'radio'; inp.name = q.quizId; inp.value = letter;
-        const span = document.createElement('span'); span.textContent = letter + '. ' + q.options[j];
-        l.append(inp, span); box.appendChild(l);
-      });
-      el.appendChild(box);
-    });
-    const btn = document.createElement('button'); btn.id = 'submitQuizBtn'; btn.textContent = 'Nộp bài kiểm tra'; btn.onclick = submitQuiz;
-    el.appendChild(btn);
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (e) { el.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; }
-}
-
-async function submitQuiz() {
-  const answers = {};
-  for (const q of quizQuestions) {
-    const x = document.querySelector('input[name="' + CSS.escape(q.quizId) + '"]:checked');
-    if (!x) { toast('Vui lòng trả lời tất cả câu hỏi.', true); return; }
-    answers[q.quizId] = x.value;
-  }
-  let ratio = Number(current.watchRatio || 0);
-  try { if (playerReady && player) ratio = Math.max(ratio, player.getCurrentTime() / Math.max(player.getDuration(), 1)); } catch (e) {}
-  busy('submitQuizBtn', true);
-  try {
-    const r = await api('submitQuiz', token, current.videoId, answers, ratio);
-    const el = $('quizArea');
-    (r.review || []).forEach(rv => {
-      const box = $('q_' + rv.quizId); if (!box) return;
-      box.classList.add(rv.chosen === rv.correct ? 'ok' : 'bad');
-      box.querySelectorAll('input').forEach(i => i.disabled = true);
-      const ex = document.createElement('div'); ex.className = 'exp';
-      ex.textContent = (rv.chosen === rv.correct ? '✓ Đúng. ' : '✗ Đáp án đúng: ' + rv.correct + '. ') + (rv.explanation || '');
-      box.appendChild(ex);
-    });
-    const s = document.createElement('div');
-    s.className = 'scoreBox ' + (r.passed ? 'pass' : 'fail');
-    s.textContent = 'Điểm: ' + r.score + '/100 (' + r.correct + '/' + r.total + ' câu đúng). ' + (r.passed ? '🎉 Đã hoàn thành bài học!' : 'Chưa đạt ' + r.passScore + ' điểm — hãy ôn tập và thử lại.');
-    el.insertBefore(s, el.children[1] || null);
-    $('submitQuizBtn').remove();
-    const again = document.createElement('button'); again.className = 'secondary'; again.textContent = r.passed ? 'Bài tiếp theo ›' : 'Làm lại bài kiểm tra';
-    again.onclick = r.passed ? nextVideo : loadQuiz; el.appendChild(again);
-    videos = r.videos || videos; renderAll();
-    s.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  } catch (e) { toast(e.message, true); busy('submitQuizBtn', false); }
-}
-
-/* ---------------- BẢNG XẾP HẠNG / LỊCH SỬ ---------------- */
-
-async function showLeaderboard() {
-  if (!token) { scrollLogin(); return; }
-  try {
-    const rows = await api('getLeaderboard', token);
-    showDash('Bảng Xếp Hạng Học Tập', rows.map(r => ({ 'Hạng': r.rank, 'Học viên': r.name, 'Đơn vị': r.unit, 'Bài hoàn thành': r.completed, 'Điểm trung bình': r.averageScore, 'XP': r.points })));
-  } catch (e) { toast(e.message, true); }
-}
-
-async function showHistory() {
-  if (!token) { scrollLogin(); return; }
-  try {
-    const d = await api('getMyHistory', token);
-    const title = id => { const v = videos.find(x => x.videoId === String(id)); return v ? v.title : id; };
-    showDash('Lịch Sử Học Tập', (d.history || []).map(r => ({ 'Thời gian': fmtDate(r.createdAt), 'Bài học': title(r.videoId), 'Sự kiện': eventName(r.eventType), 'Vị trí': fmt(r.position), 'Điểm': r.score, 'Chi tiết': r.details })));
-  } catch (e) { toast(e.message, true); }
-}
-
-function eventName(t) {
-  return ({ WATCH_PROGRESS: 'Xem video', PAUSE: 'Tạm dừng', ENDED: 'Xem hết video', LEAVE: 'Rời trang', SWITCH_VIDEO: 'Chuyển bài', QUIZ_SUBMITTED: 'Nộp bài kiểm tra' })[t] || t;
-}
-
-function showDash(title, rows) {
-  hideSections(); $('dashboard').classList.remove('hidden');
-  $('dashboardTitle').textContent = title;
-  renderTable('dashboardBody', rows);
-  $('dashboard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-/* ---------------- QUẢN TRỊ ---------------- */
-
-async function showAdmin(tab) {
-  if (!user || user.role !== 'admin') return;
-  hideSections(); $('admin').classList.remove('hidden');
-  $('adminContent').innerHTML = '<div class="empty">Đang tải dữ liệu quản trị...</div>';
-  try { adminData = await api('adminList', token); adminTab(tab || 'videos'); }
-  catch (e) { $('adminContent').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
-}
-
-function adminTab(tab) {
-  if (!adminData) return;
-  document.querySelectorAll('#adminTabs button').forEach(b => b.classList.toggle('secondary', b.dataset.tab !== tab));
-  const el = $('adminContent');
-  el.classList.remove('adminTable');
-  if (tab === 'videos') renderAdminVideos(el);
-  else if (tab === 'quizzes') renderAdminQuizzes(el);
-  else if (tab === 'students') renderAdminStudents(el);
-  else renderTable(el, (adminData.history || []).map(h => ({ 'Thời gian': fmtDate(h.createdAt), 'Học viên': h.email, 'Mã bài': h.videoId, 'Sự kiện': eventName(h.eventType), 'Vị trí': fmt(h.position), 'Điểm': h.score, 'Chi tiết': h.details })));
-}
-
-function renderAdminVideos(el) {
-  el.innerHTML = '<div class="adminGrid"><div class="adminBox"><h3>Thêm / chỉnh sửa bài học</h3>' +
-    '<label class="label">Mã bài (để trống khi thêm mới)</label><input id="vId">' +
-    '<label class="label">Tên bài học</label><input id="vTitle">' +
-    '<label class="label">Chủ đề</label><input id="vTopic">' +
-    '<label class="label">Link YouTube</label><input id="vUrl" placeholder="https://www.youtube.com/watch?v=...">' +
-    '<label class="label">Mô tả</label><textarea id="vDesc" rows="2"></textarea>' +
-    '<label class="label">Thứ tự hiển thị</label><input id="vOrder" type="number" value="' + (adminData.videos.length + 1) + '">' +
-    '<label><input id="vActive" type="checkbox" checked style="width:auto"> Hiển thị bài học</label><br>' +
-    '<button id="saveVideoBtn" onclick="saveVideo()">Lưu bài học</button> <button class="secondary" onclick="clearVideoForm()">Làm mới</button></div>' +
-    '<div class="adminBox"><h3>Danh sách bài học (' + adminData.videos.length + ')</h3><div id="videoAdminList" style="max-height:640px;overflow:auto"></div></div></div>';
-  const list = $('videoAdminList');
-  const qCount = {}; (adminData.quizzes || []).forEach(q => qCount[q.videoId] = (qCount[q.videoId] || 0) + 1);
-  adminData.videos.slice().sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)).forEach(v => {
-    const row = document.createElement('div'); row.className = 'question';
-    row.innerHTML = '<b>' + esc(v.title) + '</b><p class="muted">' + esc(v.videoId) + ' · ' + esc(v.topic) + ' · Thứ tự ' + esc(v.sortOrder) + ' · ' + (qCount[v.videoId] || 0) + ' câu hỏi' + (String(v.active) === 'false' ? ' · <span class="gold">Đang ẩn</span>' : '') + '</p>';
-    const act = document.createElement('div'); act.className = 'rowActions';
-    act.append(
-      btn('Sửa', () => { setv('vId', v.videoId); setv('vTitle', v.title); setv('vTopic', v.topic); setv('vUrl', v.youtubeId); setv('vDesc', v.description); setv('vOrder', v.sortOrder); $('vActive').checked = String(v.active) !== 'false'; $('vTitle').focus(); }),
-      btn('Câu hỏi', () => { adminTab('quizzes'); setv('qVideoFilter', v.videoId); renderQuizList(); }),
-      btn('Xóa', async () => { if (!confirm('Xóa bài học "' + v.title + '"?')) return; try { await api('adminDeleteVideo', token, v.videoId); toast('Đã xóa bài học.'); showAdmin('videos'); refreshApp(); } catch (e) { toast(e.message, true); } })
-    );
-    row.appendChild(act); list.appendChild(row);
-  });
-}
-
-async function saveVideo() {
-  const v = { videoId: val('vId'), title: val('vTitle'), topic: val('vTopic'), youtubeId: val('vUrl'), description: val('vDesc'), sortOrder: Number(val('vOrder') || 1), active: $('vActive').checked, quizRequired: true };
-  busy('saveVideoBtn', true);
-  try { await api('adminSaveVideo', token, v); toast('Đã lưu bài học.'); refreshApp(); showAdmin('videos'); }
-  catch (e) { toast(e.message, true); busy('saveVideoBtn', false); }
-}
-function clearVideoForm() { ['vId', 'vTitle', 'vTopic', 'vUrl', 'vDesc'].forEach(id => setv(id, '')); setv('vOrder', adminData.videos.length + 1); }
-
-function renderAdminQuizzes(el) {
-  const opts = adminData.videos.slice().sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)).map(v => '<option value="' + esc(v.videoId) + '">' + esc(v.videoId + ' · ' + v.title) + '</option>').join('');
-  el.innerHTML = '<div class="adminGrid"><div class="adminBox"><h3>Thêm / chỉnh sửa câu hỏi</h3>' +
-    '<label class="label">Mã câu hỏi (để trống khi thêm mới)</label><input id="qId">' +
-    '<label class="label">Bài học</label><select id="qVideo">' + opts + '</select>' +
-    '<label class="label">Câu hỏi</label><textarea id="qText" rows="2"></textarea>' +
-    ['A', 'B', 'C', 'D'].map(l => '<label class="label">Phương án ' + l + '</label><input id="qOpt' + l + '">').join('') +
-    '<label class="label">Đáp án đúng</label><select id="qCorrect"><option>A</option><option>B</option><option>C</option><option>D</option></select>' +
-    '<label class="label">Giải thích</label><textarea id="qExp" rows="2"></textarea>' +
-    '<label class="label">Thứ tự</label><input id="qOrder" type="number" value="1">' +
-    '<label><input id="qActive" type="checkbox" checked style="width:auto"> Sử dụng câu hỏi</label><br>' +
-    '<button id="saveQuizBtn" onclick="saveQuiz()">Lưu câu hỏi</button> <button class="secondary" onclick="clearQuizForm()">Làm mới</button></div>' +
-    '<div class="adminBox"><h3>Danh sách câu hỏi</h3><select id="qVideoFilter" onchange="renderQuizList()"><option value="">— Tất cả bài học —</option>' + opts + '</select><div id="quizAdminList" style="max-height:640px;overflow:auto"></div></div></div>';
-  renderQuizList();
-}
-
-function renderQuizList() {
-  const f = val('qVideoFilter'), list = $('quizAdminList'); if (!list) return;
-  list.innerHTML = '';
-  const qs = (adminData.quizzes || []).filter(q => !f || String(q.videoId) === f).sort((a, b) => String(a.videoId).localeCompare(String(b.videoId)) || Number(a.sortOrder) - Number(b.sortOrder));
-  if (!qs.length) { list.innerHTML = '<div class="empty">Chưa có câu hỏi.</div>'; return; }
-  if (f) setv('qVideo', f);
-  qs.forEach(q => {
-    const row = document.createElement('div'); row.className = 'question';
-    row.innerHTML = '<b>' + esc(q.question) + '</b><p class="muted">' + esc(q.quizId) + ' · ' + esc(q.videoId) + ' · Đáp án ' + esc(q.correctOption) + (String(q.active) === 'false' ? ' · <span class="gold">Tắt</span>' : '') + '</p>';
-    const act = document.createElement('div'); act.className = 'rowActions';
-    act.append(
-      btn('Sửa', () => { setv('qId', q.quizId); setv('qVideo', q.videoId); setv('qText', q.question); setv('qOptA', q.optionA); setv('qOptB', q.optionB); setv('qOptC', q.optionC); setv('qOptD', q.optionD); setv('qCorrect', String(q.correctOption || 'A').toUpperCase()); setv('qExp', q.explanation); setv('qOrder', q.sortOrder); $('qActive').checked = String(q.active) !== 'false'; $('qText').focus(); }),
-      btn('Xóa', async () => { if (!confirm('Xóa câu hỏi này?')) return; try { await api('adminDeleteQuiz', token, q.quizId); toast('Đã xóa câu hỏi.'); await reloadAdmin('quizzes', f); } catch (e) { toast(e.message, true); } })
-    );
-    row.appendChild(act); list.appendChild(row);
-  });
-}
-
-async function saveQuiz() {
-  const q = { quizId: val('qId'), videoId: val('qVideo'), question: val('qText'), optionA: val('qOptA'), optionB: val('qOptB'), optionC: val('qOptC'), optionD: val('qOptD'), correctOption: val('qCorrect'), explanation: val('qExp'), sortOrder: Number(val('qOrder') || 1), active: $('qActive').checked };
-  busy('saveQuizBtn', true);
-  try { await api('adminSaveQuiz', token, q); toast('Đã lưu câu hỏi.'); await reloadAdmin('quizzes', q.videoId); }
-  catch (e) { toast(e.message, true); busy('saveQuizBtn', false); }
-}
-function clearQuizForm() { ['qId', 'qText', 'qOptA', 'qOptB', 'qOptC', 'qOptD', 'qExp'].forEach(id => setv(id, '')); setv('qOrder', 1); }
-
-async function reloadAdmin(tab, filter) {
-  adminData = await api('adminList', token);
-  adminTab(tab);
-  if (filter !== undefined) { setv('qVideoFilter', filter); renderQuizList(); }
-}
-
-function renderAdminStudents(el) {
-  el.innerHTML = '<div class="adminGrid"><div class="adminBox"><h3>Thêm học viên</h3>' +
-    '<label class="label">Số điện thoại</label><input id="sPhone" type="tel" maxlength="12">' +
-    '<label class="label">Họ tên</label><input id="sName">' +
-    '<label class="label">Đơn vị</label><input id="sUnit">' +
-    '<button id="saveStudentBtn" onclick="saveStudent()">Lưu học viên</button></div>' +
-    '<div class="adminBox"><h3>Thống kê</h3><p class="muted">Tổng học viên: <b>' + adminData.students.length + '</b></p><p class="muted">Đang hoạt động: <b>' + adminData.students.filter(s => String(s.active) !== 'false').length + '</b></p></div></div><div id="studentTable"></div>';
-  const rows = adminData.students.map(s => ({
-    'Họ tên': s.fullName, 'Số điện thoại': s.phone, 'Đơn vị': s.unit, 'Đăng ký': fmtDate(s.createdAt), 'Lần truy cập': fmtDate(s.lastSeenAt),
-    'Thời gian học': fmtDuration(s.totalStudySeconds), 'Trạng thái': String(s.active) === 'false' ? 'Đã khóa' : 'Hoạt động', _s: s
-  }));
-  renderTable('studentTable', rows, r => {
-    if (r._s.role === 'admin') return null;
-    const locked = String(r._s.active) === 'false';
-    return btn(locked ? 'Mở khóa' : 'Khóa', async () => {
-      try { await api('adminSetStudentActive', token, r._s.email, locked); toast(locked ? 'Đã mở khóa.' : 'Đã khóa học viên.'); reloadAdmin('students'); } catch (e) { toast(e.message, true); }
-    });
-  });
-}
-
-async function saveStudent() {
-  busy('saveStudentBtn', true);
-  try { const r = await api('adminSaveStudent', token, { phone: val('sPhone'), fullName: val('sName'), unit: val('sUnit') }); toast(r.created ? 'Đã thêm học viên.' : 'Đã cập nhật học viên.'); reloadAdmin('students'); }
-  catch (e) { toast(e.message, true); busy('saveStudentBtn', false); }
-}
-
-async function exportData() {
-  if (!user || user.role !== 'admin') return;
-  try {
-    const d = adminData || await api('adminList', token);
-    const rows = d.students || [];
-    const csv = [['Họ tên', 'Số điện thoại', 'Email', 'Đơn vị', 'Thời gian đăng ký', 'Lần truy cập', 'Tổng thời gian học (giây)', 'Trạng thái'],
-      ...rows.map(s => [s.fullName, s.phone, s.email, s.unit, fmtDate(s.createdAt), fmtDate(s.lastSeenAt), s.totalStudySeconds, String(s.active) === 'false' ? 'Đã khóa' : 'Hoạt động'])]
-      .map(r => r.map(x => '"' + String(x ?? '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
+async function exportMasterExcel() {
+  if (!currentUser || !currentUser.isAdmin) { toast('Chỉ tài khoản Quản trị viên mới có quyền xuất file!', true); return; }
+  await withBusy('btnMasterExport', 'Đang xuất Excel...', async () => {
+    const m = await api('getMasterMatrix', token);
+    if (!m || !m.rows || !m.rows.length) { toast('Chưa có dữ liệu học viên để xuất báo cáo!', true); return; }
+    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const headers = ['STT', 'Số điện thoại', 'Họ và tên', 'Đơn vị'].concat(m.moduleHeaders.map(id => 'Điểm ' + id), ['Điểm thi hết môn', 'Ngày đăng nhập lần đầu', 'Ngày giờ thi hết môn']);
+    const lines = [headers.map(q).join(',')];
+    m.rows.forEach(r => lines.push([r.stt, q('\'' + r.phone), q(r.fullName), q(r.unit)].concat(r.moduleScores.map(s => s === '' ? '""' : s), [r.finalScore === '' ? '""' : r.finalScore, q(r.firstLogin), q(r.finalExamTime)]).join(',')));
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }));
-    a.download = 'hoc-vien-ai-master-' + new Date().toISOString().slice(0, 10) + '.csv';
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  } catch (e) { toast(e.message, true); }
-}
-
-/* ---------------- TIỆN ÍCH ---------------- */
-
-function renderTable(target, rows, actionFn) {
-  const el = typeof target === 'string' ? $(target) : target;
-  if (!rows || !rows.length) { el.innerHTML = '<div class="empty">Chưa có dữ liệu.</div>'; return; }
-  const keys = Object.keys(rows[0]).filter(k => k[0] !== '_');
-  const t = document.createElement('table'), thead = document.createElement('thead'), tr = document.createElement('tr');
-  keys.concat(actionFn ? [''] : []).forEach(k => { const th = document.createElement('th'); th.textContent = k; tr.appendChild(th); });
-  thead.appendChild(tr); t.appendChild(thead);
-  const tb = document.createElement('tbody');
-  rows.forEach(r => {
-    const tr = document.createElement('tr');
-    keys.forEach(k => { const td = document.createElement('td'); td.textContent = String(r[k] ?? ''); tr.appendChild(td); });
-    if (actionFn) { const td = document.createElement('td'); const b = actionFn(r); if (b) td.appendChild(b); tr.appendChild(td); }
-    tb.appendChild(tr);
+    a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
+    a.download = 'Bang_Diem_Tong_Hop_AI_' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   });
-  t.appendChild(tb);
-  el.innerHTML = ''; el.classList.add('adminTable'); el.appendChild(t);
 }
 
-function btn(text, onClick) { const b = document.createElement('button'); b.className = 'secondary small'; b.textContent = text; b.onclick = onClick; return b; }
-function hideSections() { document.querySelectorAll('main>section').forEach(x => { if (x.id !== 'home') x.classList.add('hidden'); }); }
-function go(id) {
-  if (id === 'course' && !token) { scrollLogin(); return; }
-  document.querySelectorAll('main>section').forEach(x => { if (x.id !== 'home') x.classList.toggle('hidden', x.id !== id); });
-  $(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-function scrollLogin() { $('home').scrollIntoView({ behavior: 'smooth' }); const i = $('phoneLogin'); if (i) i.focus(); }
-function signOut(silent) {
-  saveProgress('LEAVE');
-  const t = token;
-  sessionStorage.removeItem(TOKEN_KEY);
-  token = ''; user = null; current = null; videos = [];
-  if (watchTimer) clearInterval(watchTimer);
-  if (t && !silent) api('logout', t).catch(() => {}).finally(() => location.reload());
-  else location.reload();
+/* ================= TIỆN ÍCH ================= */
+
+async function withBusy(id, text, fn) {
+  const b = $(id), old = b.innerHTML;
+  b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ' + text;
+  try { await fn(); }
+  catch (e) { toast(e.message, true); }
+  finally { b.disabled = false; b.innerHTML = old; }
 }
 function toast(text, isErr) {
-  const d = document.createElement('div'); d.className = 'toast' + (isErr ? ' err' : ''); d.textContent = text;
-  document.querySelectorAll('.toast').forEach(x => x.remove());
-  document.body.appendChild(d); setTimeout(() => d.remove(), 4000);
+  document.querySelectorAll('.toast-msg').forEach(x => x.remove());
+  const d = document.createElement('div'); d.className = 'toast-msg' + (isErr ? ' err' : ''); d.textContent = text;
+  document.body.appendChild(d); setTimeout(() => d.remove(), 4500);
 }
-function busy(id, on) { const e = $(id); if (e) { e.disabled = on; e.classList.toggle('loading', on); } }
 function $(id) { return document.getElementById(id); }
-function val(id) { const e = $(id); return e ? e.value : ''; }
-function setv(id, v) { const e = $(id); if (e) e.value = v ?? ''; }
-function msg(id, t) { $(id).textContent = t; }
-function fmt(n) { n = Math.floor(Number(n) || 0); return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0'); }
-function fmtDuration(s) { s = Math.round(Number(s) || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? h + ' giờ ' + m + ' phút' : m + ' phút'; }
-function fmtDate(v) { if (!v) return ''; const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleString('vi-VN'); }
+function fmt(n) { n = Math.floor(Number(n) || 0); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
