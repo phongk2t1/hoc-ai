@@ -146,6 +146,7 @@
         <label for="inputAdminPin">Mã xác nhận</label>
         <input type="password" id="inputAdminPin" autocomplete="current-password" inputmode="numeric">
         <button type="submit" class="btn btn-primary btn-block" id="btnConfirmPin">Xác nhận</button>
+        <button type="button" class="btn btn-quiet btn-block" onclick="usePhoneStep()">Nhập số điện thoại khác</button>
       </form>
       <form id="stepRegister" class="stack" hidden onsubmit="event.preventDefault();completeRegistration()">
         <p id="regNotice" class="notice">Số điện thoại <b id="regPhoneShow"></b> chưa có trong danh sách học viên. Điền thông tin dưới đây để tạo tài khoản và bắt đầu học.</p>
@@ -161,7 +162,7 @@
         <label for="regEmail">Email <span class="optional">(không bắt buộc)</span></label>
         <input type="email" id="regEmail" maxlength="100" autocomplete="email">
         <button type="submit" class="btn btn-primary btn-block" id="btnRegisterSubmit">Tạo tài khoản và học</button>
-        <button id="btnOtherPhone" type="button" class="btn btn-quiet btn-block" onclick="showStep('stepPhone')">Nhập số điện thoại khác</button>
+        <button id="btnOtherPhone" type="button" class="btn btn-quiet btn-block" onclick="usePhoneStep()">Nhập số điện thoại khác</button>
       </form>
     </div>
   </main>

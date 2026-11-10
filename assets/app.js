@@ -143,6 +143,13 @@ function focusLogin() {
   } else location.hash = '#dang-nhap';
 }
 
+function usePhoneStep() {
+  sessionStorage.removeItem(SS_PHONE);
+  sessionStorage.removeItem('hocai_need_pin');
+  $('inputPhone').value = '';
+  if (location.hash !== '#dang-nhap') location.hash = '#dang-nhap'; else showStep('stepPhone');
+}
+
 function showRegister(phone) {
   $('regPhoneShow').textContent = phone || '';
   $('regNotice').hidden = !phone;
