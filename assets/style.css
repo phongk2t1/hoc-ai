@@ -406,6 +406,43 @@ code { font-size: 13px; background: var(--paper); padding: 2px 6px; border-radiu
 .editing-note { font-size: 14px; color: var(--ink-2); }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
+/* ---------- Trang riêng: đăng nhập, đăng ký, thi hết môn ---------- */
+.page { min-height: calc(100vh - 160px); padding: clamp(24px, 5vw, 56px) 16px 48px; }
+.page-card {
+  max-width: 480px; margin: 0 auto; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 24px; padding: clamp(22px, 4vw, 36px);
+}
+.page h1 { font-size: clamp(26px, 3.2vw, 34px); font-weight: 800; letter-spacing: -0.025em; margin: 14px 0 6px; }
+.page h1:focus { outline: none; }
+.page-lead { color: var(--ink-2); font-size: 15.5px; margin-bottom: 8px; }
+.page .stack { margin-top: 12px; }
+.page .stack .btn + .btn { margin-top: 8px; }
+.back-link { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--blue); text-decoration: none; }
+.back-link::before { content: ""; width: 8px; height: 8px; border-left: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); margin-right: 2px; }
+.back-link:hover { text-decoration: underline; }
+
+.page-exam { padding-bottom: 120px; }
+.exam-page { max-width: 780px; margin: 0 auto; }
+.final-intro { margin-top: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: clamp(20px, 3vw, 28px); }
+.rules { margin: 0 0 22px; padding-left: 20px; color: var(--ink-2); }
+.rules li { margin: 6px 0; }
+.rules b { color: var(--ink); }
+#finalResult { margin-top: 20px; }
+#finalQuestions { margin-top: 20px; }
+.final-after { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.exam-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px max(16px, calc((100vw - 780px) / 2)) max(12px, env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, .94); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+}
+.exam-bar .exam-progress { font-weight: 600; color: var(--ink); }
+
+/* Trình duyệt cũ không hỗ trợ <dialog> */
+dialog.sheet-fallback[open] { position: fixed; inset: 0; margin: auto; z-index: 90; }
+.dialog-backdrop { position: fixed; inset: 0; z-index: 89; background: rgba(8, 20, 48, .55); }
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 100;

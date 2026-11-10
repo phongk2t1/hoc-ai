@@ -29,6 +29,7 @@
     </div>
   </header>
 
+  <div id="viewHome">
   <section id="welcome" class="welcome">
     <div class="welcome-inner">
       <div class="welcome-copy">
@@ -127,6 +128,66 @@
       </button>
     </aside>
   </main>
+  </div>
+
+  <!-- Trang đăng nhập / đăng ký -->
+  <main id="viewAuth" class="page" hidden>
+    <div class="page-card">
+      <a class="back-link" href="#">Quay lại trang học</a>
+      <h1 id="authTitle" tabindex="-1">Đăng nhập học tập</h1>
+      <form id="stepPhone" class="stack" onsubmit="event.preventDefault();verifyPhone()">
+        <p class="page-lead">Nhập số điện thoại để tiếp tục học. Số mới sẽ được chuyển sang bước tạo tài khoản.</p>
+        <label for="inputPhone">Số điện thoại</label>
+        <input type="tel" id="inputPhone" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="0905 123 456">
+        <button type="submit" class="btn btn-primary btn-block" id="btnPhoneNext">Tiếp tục</button>
+      </form>
+      <form id="stepAdminPin" class="stack" hidden onsubmit="event.preventDefault();verifyAdminPin()">
+        <p class="notice">Đây là tài khoản quản trị. Nhập mã xác nhận để tiếp tục.</p>
+        <label for="inputAdminPin">Mã xác nhận</label>
+        <input type="password" id="inputAdminPin" autocomplete="current-password" inputmode="numeric">
+        <button type="submit" class="btn btn-primary btn-block" id="btnConfirmPin">Xác nhận</button>
+      </form>
+      <form id="stepRegister" class="stack" hidden onsubmit="event.preventDefault();completeRegistration()">
+        <p class="notice">Số điện thoại <b id="regPhoneShow"></b> chưa có trong danh sách học viên. Điền thông tin dưới đây để tạo tài khoản và bắt đầu học.</p>
+        <label for="regName">Họ và tên</label>
+        <input type="text" id="regName" maxlength="100" autocomplete="name" required>
+        <label for="regUnit">Đơn vị công tác</label>
+        <input type="text" id="regUnit" maxlength="200" autocomplete="organization" required>
+        <label for="regEmail">Email <span class="optional">(không bắt buộc)</span></label>
+        <input type="email" id="regEmail" maxlength="100" autocomplete="email">
+        <button type="submit" class="btn btn-primary btn-block" id="btnRegisterSubmit">Tạo tài khoản và học</button>
+        <button type="button" class="btn btn-quiet btn-block" onclick="showStep('stepPhone')">Nhập số điện thoại khác</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- Trang thi hết môn -->
+  <main id="viewFinal" class="page page-exam" hidden>
+    <div class="exam-page">
+      <a class="back-link" href="#" onclick="return leaveFinal()">Quay lại trang học</a>
+      <h1>Thi hết môn</h1>
+      <p id="finalSub" class="page-lead">Tổng hợp các chủ đề của khóa học.</p>
+      <div id="finalIntro" class="final-intro">
+        <ul class="rules">
+          <li><b>30 câu</b> trắc nghiệm, lấy ngẫu nhiên từ tất cả bài học, mỗi bài ít nhất 2 câu.</li>
+          <li>Đạt khi trả lời đúng từ <b>20 câu</b> trở lên.</li>
+          <li>Không giới hạn thời gian. Có thể thi lại nhiều lần, hệ thống ghi nhận điểm cao nhất.</li>
+          <li>Không tải lại hoặc rời trang khi đang làm bài, nếu không bài làm sẽ mất.</li>
+        </ul>
+        <button id="btnStartFinal" class="btn btn-gold" type="button" onclick="beginFinalExam()">Bắt đầu làm bài</button>
+      </div>
+      <div id="finalResult" class="exam-result" hidden></div>
+      <div id="finalQuestions"></div>
+      <div id="finalAfter" class="final-after" hidden>
+        <button class="btn btn-primary" type="button" onclick="beginFinalExam()">Thi lại với đề mới</button>
+        <a class="btn btn-quiet" href="#">Về trang học</a>
+      </div>
+    </div>
+    <div id="finalBar" class="exam-bar" hidden>
+      <span id="finalProgress" class="exam-progress"></span>
+      <button id="btnSubmitFinal" class="btn btn-primary" type="button" onclick="submitFinal()">Nộp bài</button>
+    </div>
+  </main>
 
   <footer class="footer">
     <div>
@@ -138,35 +199,6 @@
       <span>© 2026 Nguyễn Phong</span>
     </div>
   </footer>
-
-  <!-- Đăng nhập / mã PIN / đăng ký -->
-  <dialog id="authDialog" class="sheet sheet-sm" aria-labelledby="authTitle">
-    <div class="sheet-head">
-      <h2 id="authTitle" tabindex="-1" autofocus>Đăng nhập học tập</h2>
-      <button class="icon-btn" type="button" aria-label="Đóng" onclick="closeDialog('authDialog')">✕</button>
-    </div>
-    <form id="stepPhone" class="sheet-body stack" onsubmit="event.preventDefault();verifyPhone()">
-      <label for="inputPhone">Số điện thoại</label>
-      <input type="tel" id="inputPhone" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="0905 123 456">
-      <button type="submit" class="btn btn-primary btn-block" id="btnPhoneNext">Tiếp tục</button>
-    </form>
-    <form id="stepAdminPin" class="sheet-body stack" hidden onsubmit="event.preventDefault();verifyAdminPin()">
-      <p class="notice">Đây là tài khoản quản trị. Nhập mã xác nhận để tiếp tục.</p>
-      <label for="inputAdminPin">Mã xác nhận</label>
-      <input type="password" id="inputAdminPin" autocomplete="current-password" inputmode="numeric">
-      <button type="submit" class="btn btn-primary btn-block" id="btnConfirmPin">Xác nhận</button>
-    </form>
-    <form id="stepRegister" class="sheet-body stack" hidden onsubmit="event.preventDefault();completeRegistration()">
-      <p class="notice">Số điện thoại <b id="regPhoneShow"></b> chưa có trong danh sách. Điền thông tin để tạo tài khoản học.</p>
-      <label for="regName">Họ và tên</label>
-      <input type="text" id="regName" maxlength="100" autocomplete="name" required>
-      <label for="regUnit">Đơn vị công tác</label>
-      <input type="text" id="regUnit" maxlength="200" autocomplete="organization" required>
-      <label for="regEmail">Email <span class="optional">(không bắt buộc)</span></label>
-      <input type="email" id="regEmail" maxlength="100" autocomplete="email">
-      <button type="submit" class="btn btn-primary btn-block" id="btnRegisterSubmit">Tạo tài khoản và học</button>
-    </form>
-  </dialog>
 
   <!-- Bài thi -->
   <dialog id="examDialog" class="sheet sheet-lg" aria-labelledby="examTitle">
@@ -183,7 +215,7 @@
     </div>
     <div class="sheet-foot">
       <span id="examProgress" class="exam-progress"></span>
-      <button type="button" class="btn btn-primary" id="btnSubmitExam" onclick="submitAnswers()">Nộp bài</button>
+      <button type="button" class="btn btn-primary" id="btnSubmitExam" onclick="submitAnswers('MODUL')">Nộp bài</button>
     </div>
   </dialog>
 
