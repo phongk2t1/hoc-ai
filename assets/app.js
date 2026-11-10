@@ -25,8 +25,27 @@ function apiConfigured() {
   return /^https:\/\/script\.google\.com\/(a\/[^/]+\/)?macros\/s\/[^/]+\/exec/.test(CFG.API_URL || '') && CFG.API_URL.indexOf('DAN_URL') < 0;
 }
 
+// Các lệnh chỉ đọc / xác thực: an toàn để gửi lại khi máy chủ treo
+const RETRYABLE = ['ping', 'authenticate', 'resume', 'getCourseData', 'getLeaderboard', 'getAdminData', 'getMasterMatrix', 'getModuleExam', 'getFinalExam'];
+const API_TIMEOUT = 20000;
+
 async function api(action, ...args) {
   if (!apiConfigured()) throw new Error('Chưa cấu hình API_URL trong config.js.');
+  const tries = RETRYABLE.includes(action) ? 2 : 1;
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try { return await apiOnce(action, args, action === 'submitExam' ? 45000 : API_TIMEOUT); }
+    catch (e) {
+      lastErr = e;
+      if (!e.timeout && !e.network) throw e; // lỗi nghiệp vụ: báo ngay
+    }
+  }
+  throw lastErr;
+}
+
+async function apiOnce(action, args, timeoutMs) {
+  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = setTimeout(() => { if (ctrl) ctrl.abort(); }, timeoutMs);
   let res;
   try {
     res = await fetch(CFG.API_URL, {
@@ -34,11 +53,19 @@ async function api(action, ...args) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action, args }),
       redirect: 'follow',
-      keepalive: action === 'saveProgress'
+      keepalive: action === 'saveProgress',
+      signal: ctrl ? ctrl.signal : undefined
     });
-  } catch (e) { throw new Error('Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.'); }
+  } catch (e) {
+    clearTimeout(timer);
+    const err = new Error(e && e.name === 'AbortError' ? 'Máy chủ phản hồi quá lâu. Vui lòng bấm lại.' : 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.');
+    if (e && e.name === 'AbortError') err.timeout = true; else err.network = true;
+    throw err;
+  }
   let json;
-  try { json = await res.json(); } catch (e) { throw new Error('Máy chủ phản hồi không hợp lệ. Kiểm tra quyền truy cập Web App.'); }
+  try { json = await res.json(); }
+  catch (e) { clearTimeout(timer); const err = new Error('Máy chủ phản hồi không hợp lệ. Vui lòng thử lại.'); err.network = true; throw err; }
+  clearTimeout(timer);
   if (!json.ok) {
     const err = new Error(json.error || 'Đã có lỗi xảy ra.');
     err.code = json.code || '';
