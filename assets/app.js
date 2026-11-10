@@ -42,7 +42,7 @@ async function api(action, ...args) {
   if (!json.ok) {
     const err = new Error(json.error || 'Đã có lỗi xảy ra.');
     err.code = json.code || '';
-    if (err.code === 'SESSION' && token) onSessionExpired();
+    if (err.code === 'SESSION' && token && action !== 'resume') onSessionExpired();
     throw err;
   }
   return json.data;
@@ -65,29 +65,35 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('hashchange', route);
   window.addEventListener('beforeunload', e => { if (currentExam) { e.preventDefault(); e.returnValue = ''; } });
 
-  if (!apiConfigured()) { $('apiWarn').hidden = false; $('pathList').innerHTML = '<li class="path-empty">Chưa cấu hình máy chủ.</li>'; route(); return; }
+  route(); // hiện ngay trang theo địa chỉ, không chờ máy chủ
+  if (!apiConfigured()) { $('apiWarn').hidden = false; $('pathList').innerHTML = '<li class="path-empty">Chưa cấu hình máy chủ.</li>'; authReady = true; route(); return; }
 
   const savedToken = localStorage.getItem(LS_TOKEN);
   const savedPhone = localStorage.getItem(LS_PHONE);
   let restored = false;
   if (savedToken) {
-    try { setUser(await api('resume', savedToken), true); restored = true; }
-    catch (e) { localStorage.removeItem(LS_TOKEN); token = ''; }
+    token = savedToken;
+    // Gọi song song: khôi phục phiên + tải bài học
+    const [r1] = await Promise.allSettled([api('resume', savedToken), loadCourseVideos()]);
+    if (r1.status === 'fulfilled') { setUser(r1.value, true, true); restored = true; }
+    else { localStorage.removeItem(LS_TOKEN); token = ''; }
   }
   if (!restored && savedPhone) {
     try {
       const res = await api('authenticate', savedPhone, '');
       if (res.exists && !res.requirePin) { setUser(res, true); restored = true; }
-      else if (res.requirePin) { sessionStorage.setItem(SS_PHONE, savedPhone); sessionStorage.setItem('hocai_need_pin', '1'); if (!location.hash) history.replaceState(null, '', '#dang-nhap'); }
+      else if (res.requirePin) { sessionStorage.setItem(SS_PHONE, savedPhone); sessionStorage.setItem('hocai_need_pin', '1'); }
     } catch (e) { /* cho đăng nhập lại */ }
   }
-  if (!restored) { loadCourseVideos(); applyLockState(); }
+  if (!restored) { currentUser = null; loadCourseVideos(); applyLockState(); }
+  authReady = true;
   route();
 });
 
 /* ================= ĐIỀU HƯỚNG TRANG ================= */
 
 let lastHash = location.hash;
+let authReady = false;
 function route() {
   const h = location.hash.replace(/\?.*$/, '');
   // Rời trang thi khi đang làm bài: hỏi lại
@@ -102,15 +108,16 @@ function route() {
   window.scrollTo(0, 0);
 
   if (view === 'viewAuth') {
-    if (currentUser) { goReturn(); return; }
+    if (currentUser && authReady) { goReturn(); return; }
     const phone = sessionStorage.getItem(SS_PHONE) || '';
     $('inputPhone').value = phone;
-    if (h === '#dang-ky' && phone) { $('regPhoneShow').textContent = phone; showStep('stepRegister'); }
+    if (h === '#dang-ky') showRegister(phone);
     else if (phone && sessionStorage.getItem('hocai_need_pin')) showStep('stepAdminPin');
     else showStep('stepPhone');
   } else if (view === 'viewFinal') {
-    if (!currentUser) { sessionStorage.setItem(LS_RETURN, '#thi-het-mon'); location.hash = '#dang-nhap'; toast('Đăng nhập để thi hết môn.'); return; }
     if (!currentExam) resetFinalPage();
+    if (!authReady) { const b = $('btnStartFinal'); b.disabled = true; b.textContent = 'Đang kiểm tra đăng nhập…'; return; }
+    if (!currentUser) { sessionStorage.setItem(LS_RETURN, '#thi-het-mon'); location.hash = '#dang-nhap'; toast('Đăng nhập để thi hết môn.'); return; }
   } else {
     $('finalBar').hidden = true;
   }
@@ -136,6 +143,16 @@ function focusLogin() {
   } else location.hash = '#dang-nhap';
 }
 
+function showRegister(phone) {
+  $('regPhoneShow').textContent = phone || '';
+  $('regNotice').hidden = !phone;
+  $('regNoticeNew').hidden = !!phone;
+  $('regPhoneWrap').hidden = !!phone;
+  $('btnOtherPhone').hidden = !phone;
+  $('regPhone').value = phone || '';
+  showStep('stepRegister');
+}
+
 function showStep(id) {
   ['stepPhone', 'stepAdminPin', 'stepRegister'].forEach(s => { $(s).hidden = s !== id; });
   $('authTitle').textContent = id === 'stepRegister' ? 'Tạo tài khoản học' : id === 'stepAdminPin' ? 'Xác nhận quản trị' : 'Đăng nhập học tập';
@@ -150,7 +167,7 @@ function handleAuthResult(res, phone) {
     sessionStorage.setItem('hocai_need_pin', '1');
     if (location.hash !== '#dang-nhap') location.hash = '#dang-nhap'; else showStep('stepAdminPin');
   } else if (location.hash !== '#dang-ky') location.hash = '#dang-ky';
-  else { $('regPhoneShow').textContent = res.phone; showStep('stepRegister'); }
+  else showRegister(res.phone);
 }
 
 async function loginFromHero() {
@@ -179,8 +196,8 @@ async function verifyAdminPin() {
 }
 
 async function completeRegistration() {
-  const data = { phone: sessionStorage.getItem(SS_PHONE) || $('inputPhone').value.trim(), fullName: $('regName').value.trim(), unit: $('regUnit').value.trim(), email: $('regEmail').value.trim() };
-  if (!data.phone) { showStep('stepPhone'); return; }
+  const data = { phone: ($('regPhoneWrap').hidden ? sessionStorage.getItem(SS_PHONE) : $('regPhone').value.trim()) || $('inputPhone').value.trim(), fullName: $('regName').value.trim(), unit: $('regUnit').value.trim(), email: $('regEmail').value.trim() };
+  if (!data.phone) { toast('Nhập số điện thoại.', true); $('regPhone').focus(); return; }
   if (!data.fullName || !data.unit) { toast('Điền họ tên và đơn vị công tác.', true); return; }
   await withBusy('btnRegisterSubmit', 'Đang tạo tài khoản', async () => {
     setUser(await api('register', data, ''));
@@ -189,7 +206,7 @@ async function completeRegistration() {
   });
 }
 
-function setUser(res, silent) {
+function setUser(res, silent, courseLoaded) {
   if (!res || !res.user) return;
   token = res.token; currentUser = res.user;
   localStorage.setItem(LS_TOKEN, token);
@@ -200,6 +217,7 @@ function setUser(res, silent) {
   $('adminBtn').hidden = !currentUser.isAdmin;
   $('welcome').hidden = true;
   applyLockState();
+  if (courseLoaded && videoList.length) { renderPath(); updateRing(); if (currentVideo) selectVideo(currentVideo, true); return; }
   currentVideo = null;
   loadCourseVideos();
 }
@@ -496,7 +514,8 @@ function resetFinalPage() {
   $('finalAfter').hidden = true;
   $('finalQuestions').innerHTML = '';
   $('finalBar').hidden = true;
-  $('finalSub').textContent = 'Tổng hợp các chủ đề của khóa học. Thí sinh: ' + (currentUser ? currentUser.fullName : '') + '.';
+  $('finalSub').textContent = 'Tổng hợp các chủ đề của khóa học.' + (currentUser ? ' Thí sinh: ' + currentUser.fullName + '.' : '');
+  const b = $('btnStartFinal'); b.disabled = false; b.textContent = 'Bắt đầu làm bài';
 }
 
 async function beginFinalExam() {

@@ -148,7 +148,12 @@
         <button type="submit" class="btn btn-primary btn-block" id="btnConfirmPin">Xác nhận</button>
       </form>
       <form id="stepRegister" class="stack" hidden onsubmit="event.preventDefault();completeRegistration()">
-        <p class="notice">Số điện thoại <b id="regPhoneShow"></b> chưa có trong danh sách học viên. Điền thông tin dưới đây để tạo tài khoản và bắt đầu học.</p>
+        <p id="regNotice" class="notice">Số điện thoại <b id="regPhoneShow"></b> chưa có trong danh sách học viên. Điền thông tin dưới đây để tạo tài khoản và bắt đầu học.</p>
+        <p id="regNoticeNew" class="page-lead" hidden>Điền thông tin dưới đây để tạo tài khoản và bắt đầu học. Nếu đã có tài khoản, <a href="#dang-nhap">đăng nhập tại đây</a>.</p>
+        <div id="regPhoneWrap" class="stack" hidden>
+          <label for="regPhone">Số điện thoại</label>
+          <input type="tel" id="regPhone" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="0905 123 456">
+        </div>
         <label for="regName">Họ và tên</label>
         <input type="text" id="regName" maxlength="100" autocomplete="name" required>
         <label for="regUnit">Đơn vị công tác</label>
@@ -156,7 +161,7 @@
         <label for="regEmail">Email <span class="optional">(không bắt buộc)</span></label>
         <input type="email" id="regEmail" maxlength="100" autocomplete="email">
         <button type="submit" class="btn btn-primary btn-block" id="btnRegisterSubmit">Tạo tài khoản và học</button>
-        <button type="button" class="btn btn-quiet btn-block" onclick="showStep('stepPhone')">Nhập số điện thoại khác</button>
+        <button id="btnOtherPhone" type="button" class="btn btn-quiet btn-block" onclick="showStep('stepPhone')">Nhập số điện thoại khác</button>
       </form>
     </div>
   </main>
