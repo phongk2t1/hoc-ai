@@ -1,7 +1,7 @@
 /**
  * HỆ THỐNG HỌC AI CÙNG THẦY GIÁO NGUYỄN PHONG
  * Google Apps Script — API JSON cho giao diện chạy trên GitHub Pages.
- * Copyright © 2026 Nguyễn Phong
+ * Copyright © 2026 Nguyễn Phong — triển khai tự động qua GitHub Actions
  *
  * CẤU HÌNH (Project Settings → Script Properties):
  *   SPREADSHEET_ID  ID Google Sheet dữ liệu
