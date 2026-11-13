@@ -128,8 +128,8 @@ function route() {
     currentExam = null;
   }
   lastHash = h;
-  const view = h === '#dang-nhap' || h === '#dang-ky' ? 'viewAuth' : h === '#thi-het-mon' ? 'viewFinal' : h.indexOf('#kiem-tra/') === 0 ? 'viewModule' : 'viewHome';
-  ['viewHome', 'viewAuth', 'viewFinal', 'viewModule'].forEach(v => { $(v).hidden = v !== view; });
+  const view = h === '#dang-nhap' || h === '#dang-ky' ? 'viewAuth' : h === '#thi-het-mon' ? 'viewFinal' : h.indexOf('#kiem-tra/') === 0 ? 'viewModule' : h === '#thong-tin' ? 'viewProfile' : 'viewHome';
+  ['viewHome', 'viewAuth', 'viewFinal', 'viewModule', 'viewProfile'].forEach(v => { $(v).hidden = v !== view; });
   $('finalBar').hidden = $('finalBar').hidden || view !== 'viewFinal';
   if (view !== 'viewModule') $('moduleBar').hidden = true;
   if (view !== 'viewFinal') $('finalBar').hidden = true;
@@ -147,6 +147,8 @@ function route() {
     if (!currentExam) resetFinalPage();
     if (!authReady) { const b = $('btnStartFinal'); b.disabled = true; b.textContent = 'Đang kiểm tra đăng nhập…'; return; }
     if (!currentUser) { sessionStorage.setItem(LS_RETURN, '#thi-het-mon'); location.hash = '#dang-nhap'; toast('Đăng nhập để thi hết môn.'); return; }
+  } else if (view === 'viewProfile') {
+    openProfilePage();
   } else if (view === 'viewModule') {
     openModulePage(decodeURIComponent(h.slice('#kiem-tra/'.length)));
   }
@@ -161,6 +163,32 @@ function goReturn() {
   if (r) { location.hash = r; return; }
   history.pushState(null, '', location.pathname + location.search);
   route();
+}
+
+/* ================= SỬA THÔNG TIN ================= */
+
+function openProfilePage() {
+  const b = $('btnSaveProfile');
+  if (!authReady) { b.disabled = true; b.textContent = 'Đang kiểm tra đăng nhập…'; return; }
+  if (!currentUser) { sessionStorage.setItem(LS_RETURN, '#thong-tin'); location.hash = '#dang-nhap'; toast('Đăng nhập để sửa thông tin.'); return; }
+  b.disabled = false; b.textContent = 'Lưu lại thay đổi';
+  $('profPhone').value = currentUser.phone || '';
+  $('profName').value = currentUser.fullName || '';
+  $('profUnit').value = currentUser.unit || '';
+  $('profEmail').value = currentUser.email || '';
+  setTimeout(() => $('profName').focus(), 60);
+}
+
+async function saveProfile() {
+  const data = { fullName: $('profName').value.trim(), unit: $('profUnit').value.trim(), email: $('profEmail').value.trim() };
+  if (!data.fullName || !data.unit) { toast('Điền họ tên và đơn vị công tác.', true); return; }
+  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { toast('Email không hợp lệ.', true); $('profEmail').focus(); return; }
+  await withBusy('btnSaveProfile', 'Đang lưu', async () => {
+    const r = await api('updateProfile', token, data);
+    currentUser = Object.assign({}, currentUser, r.user);
+    renderUserChip();
+    toast('Đã lưu thay đổi thông tin.');
+  });
 }
 
 /* ================= ĐĂNG NHẬP ================= */
@@ -247,15 +275,20 @@ function setUser(res, silent, courseLoaded) {
   token = res.token; currentUser = res.user;
   localStorage.setItem(LS_TOKEN, token);
   localStorage.setItem(LS_PHONE, currentUser.phone);
-  $('userArea').innerHTML = '<div class="user-chip"><span class="avatar" aria-hidden="true">' + esc(initials(currentUser.fullName)) + '</span>' +
-    '<span class="who"><b>' + esc(currentUser.fullName) + '</b><span>' + (currentUser.isAdmin ? 'Quản trị viên' : esc(currentUser.unit || 'Học viên')) + '</span></span>' +
-    '<button class="icon-btn" type="button" onclick="logout()" title="Đăng xuất" aria-label="Đăng xuất">' + ICON.logout + '</button></div>';
+  renderUserChip();
   $('adminBtn').hidden = !currentUser.isAdmin;
   $('welcome').hidden = true;
   applyLockState();
   if (courseLoaded && videoList.length) { renderPath(); updateRing(); if (currentVideo) selectVideo(currentVideo, true); return; }
   currentVideo = null;
   loadCourseVideos();
+}
+
+function renderUserChip() {
+  $('userArea').innerHTML = '<div class="user-chip"><a class="chip-link" href="#thong-tin" title="Sửa thông tin cá nhân"><span class="avatar" aria-hidden="true">' + esc(initials(currentUser.fullName)) + '</span>' +
+    '<span class="who"><b>' + esc(currentUser.fullName) + '</b><span>' + (currentUser.isAdmin ? 'Quản trị viên' : esc(currentUser.unit || 'Học viên')) + '</span></span></a>' +
+    '<a class="chip-edit" href="#thong-tin">Sửa thông tin</a>' +
+    '<button class="icon-btn" type="button" onclick="logout()" title="Đăng xuất" aria-label="Đăng xuất">' + ICON.logout + '</button></div>';
 }
 
 function onSessionExpired() {
@@ -826,7 +859,7 @@ function toast(text, isErr) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 4500);
 }
 function btnEl(text, cls, onClick) { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text; b.onclick = onClick; return b; }
-function initials(name) { const p = String(name || '').trim().split(/\s+/); return ((p.length > 1 ? p[p.length - 2][0] : '') + (p[p.length - 1] || '?')[0]).toUpperCase(); }
+function initials(name) { const p = String(name || '').replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/); return ((p.length > 1 ? p[p.length - 2][0] : '') + (p[p.length - 1] || '?')[0]).toUpperCase(); }
 function $(id) { return document.getElementById(id); }
 function fmt(n) { n = Math.floor(Number(n) || 0); return Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0'); }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }

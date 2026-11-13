@@ -40,6 +40,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---------- Buttons ---------- */
 .btn {
+  text-decoration: none;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 46px; padding: 0 20px;
   border: 1px solid transparent; border-radius: 12px;
@@ -417,6 +418,15 @@ code { font-size: 13px; background: var(--paper); padding: 2px 6px; border-radiu
 .page-lead { color: var(--ink-2); font-size: 15.5px; margin-bottom: 8px; }
 .page .stack { margin-top: 12px; }
 .page .stack .btn + .btn { margin-top: 8px; }
+.stack input[readonly] { background: var(--paper); color: var(--ink-2); }
+.field-hint { font-size: 13px; color: var(--ink-3); margin-top: -2px; }
+.chip-link {
+  text-decoration: none; color: inherit;
+  border: 0; background: transparent; padding: 0; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 10px; border-radius: 999px;
+}
+.chip-edit { font-size: 13px; font-weight: 600; color: var(--blue); padding: 0 6px; white-space: nowrap; text-decoration: none; }
+.chip-edit:hover { text-decoration: underline; }
 .back-link { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--blue); text-decoration: none; }
 .back-link::before { content: ""; width: 8px; height: 8px; border-left: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); margin-right: 2px; }
 .back-link:hover { text-decoration: underline; }
@@ -468,6 +478,7 @@ dialog.sheet-fallback[open] { position: fixed; inset: 0; margin: auto; z-index: 
 @media (max-width: 640px) {
   .brand-text span { display: none; }
   .user-chip .who { display: none; }
+  .chip-edit { font-size: 12.5px; padding: 0 2px 0 0; }
   .welcome h1 { max-width: none; }
   .hero-login-row { flex-direction: column; }
   .hero-login input { flex: none; }

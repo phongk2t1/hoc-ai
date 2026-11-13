@@ -167,6 +167,28 @@
     </div>
   </main>
 
+  <!-- Trang sửa thông tin học viên -->
+  <main id="viewProfile" class="page" hidden>
+    <div class="page-card">
+      <a class="back-link" href="#">Quay lại trang chủ</a>
+      <h1 tabindex="-1">Sửa thông tin</h1>
+      <p class="page-lead">Thông tin này dùng để ghi tên trên bảng điểm và bảng xếp hạng.</p>
+      <form id="profileForm" class="stack" onsubmit="event.preventDefault();saveProfile()">
+        <label for="profPhone">Số điện thoại</label>
+        <input type="tel" id="profPhone" readonly aria-describedby="profPhoneHint">
+        <p id="profPhoneHint" class="field-hint">Số điện thoại là tên đăng nhập nên không đổi được. Cần đổi số, vui lòng liên hệ quản trị viên.</p>
+        <label for="profName">Họ và tên</label>
+        <input type="text" id="profName" maxlength="100" autocomplete="name" required>
+        <label for="profUnit">Đơn vị công tác</label>
+        <input type="text" id="profUnit" maxlength="200" autocomplete="organization" required>
+        <label for="profEmail">Email <span class="optional">(không bắt buộc)</span></label>
+        <input type="email" id="profEmail" maxlength="100" autocomplete="email">
+        <button type="submit" class="btn btn-primary btn-block" id="btnSaveProfile">Lưu lại thay đổi</button>
+        <a class="btn btn-quiet btn-block" href="#">Quay lại trang chủ</a>
+      </form>
+    </div>
+  </main>
+
   <!-- Trang kiểm tra sau bài học -->
   <main id="viewModule" class="page page-exam" hidden>
     <div class="exam-page">

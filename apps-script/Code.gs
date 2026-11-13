@@ -44,6 +44,7 @@ const API = {
   register:          (a) => register(a[0], a[1]),
   resume:            (a) => resume(a[0]),
   logout:            (a) => logout(a[0]),
+  updateProfile:     (a) => updateProfile(a[0], a[1]),
   getCourseData:     (a) => getCourseData(a[0]),
   saveProgress:      (a) => saveProgress(a[0], a[1], a[2], a[3]),
   getModuleExam:     (a) => getModuleExam(a[0], a[1]),
@@ -237,6 +238,26 @@ function register(userData, adminPin) {
   } finally { lock.releaseLock(); }
   const ses = createSession_(user, isAdmin);
   return { exists: true, token: ses.token, user: ses.user };
+}
+
+/** Học viên tự sửa họ tên, đơn vị, email (không đổi được số điện thoại). */
+function updateProfile(token, data) {
+  const s = session_(token);
+  data = data || {};
+  const fullName = String(data.fullName || '').trim().slice(0, 100);
+  const unit = String(data.unit || '').trim().slice(0, 200);
+  const email = String(data.email || '').trim().slice(0, 100);
+  if (!fullName || !unit) throw apiError_('Vui lòng điền họ tên và đơn vị công tác.', 'BAD_INPUT');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw apiError_('Email không hợp lệ.', 'BAD_INPUT');
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const u = findUser_(s.phone);
+    if (!u) throw apiError_('Không tìm thấy hồ sơ học viên.', 'NOT_FOUND');
+    getDb().getSheetByName('Users').getRange(u.row, 2, 1, 3).setValues([[fullName, unit, email]]);
+  } finally { lock.releaseLock(); }
+  const user = { phone: s.phone, fullName: fullName, unit: unit, email: email, isAdmin: !!s.isAdmin };
+  CacheService.getScriptCache().put(CONFIG.SESSION_PREFIX + s.token, JSON.stringify(user), CONFIG.TTL);
+  return { user: user };
 }
 
 function resume(token) { const s = session_(token); return { token: s.token, user: { phone: s.phone, fullName: s.fullName, unit: s.unit, email: s.email, isAdmin: s.isAdmin } }; }
