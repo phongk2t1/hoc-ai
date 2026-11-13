@@ -184,7 +184,12 @@ async function saveProfile() {
   if (!data.fullName || !data.unit) { toast('Điền họ tên và đơn vị công tác.', true); return; }
   if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { toast('Email không hợp lệ.', true); $('profEmail').focus(); return; }
   await withBusy('btnSaveProfile', 'Đang lưu', async () => {
-    const r = await api('updateProfile', token, data);
+    let r;
+    try { r = await api('updateProfile', token, data); }
+    catch (e) {
+      if (e.code === 'BAD_ACTION') throw new Error('Máy chủ chưa được cập nhật chức năng lưu thông tin. Vui lòng báo quản trị viên.');
+      throw e;
+    }
     currentUser = Object.assign({}, currentUser, r.user);
     renderUserChip();
     toast('Đã lưu thay đổi thông tin.');

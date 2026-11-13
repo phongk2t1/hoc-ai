@@ -46,6 +46,23 @@ GitHub Pages: **Settings → Pages → Source: GitHub Actions**. Mỗi lần pus
 - Quản trị: sửa bài học, lọc nhật ký thi; bài có cột `active = FALSE` trong Videos sẽ bị ẩn.
 - Điều kiện đạt tự co giãn khi bài có ít câu hỏi hơn 10 (70%) hoặc ngân hàng ít hơn 30 câu (2/3).
 
+## Tự động triển khai Apps Script
+
+Workflow `.github/workflows/apps-script.yml` tự đẩy `apps-script/Code.gs` lên dự án **HOCAI** và cập nhật lần triển khai **HOCAICHOT** (giữ nguyên URL `/exec`) mỗi khi thư mục `apps-script/` thay đổi. Thiết lập một lần:
+
+1. Bật Google Apps Script API: <https://script.google.com/home/usersettings> → **Google Apps Script API: Bật**.
+2. Trên một máy tính có Node.js:
+   ```bash
+   npm install -g @google/clasp@2.4.2
+   clasp login            # đăng nhập tài khoản Google sở hữu dự án HOCAI, cho phép quyền
+   ```
+   Lệnh này tạo tệp `.clasprc.json` trong thư mục người dùng (macOS/Linux: `~/.clasprc.json`, Windows: `C:\Users\<tên>\.clasprc.json`).
+3. Mở tệp đó, chép toàn bộ nội dung. Vào repo → **Settings → Secrets and variables → Actions → New repository secret**:
+   tên `CLASPRC_JSON`, giá trị là nội dung vừa chép.
+4. Vào tab **Actions → Deploy Apps Script → Run workflow** để chạy lần đầu.
+
+Tệp `.clasprc.json` là khoá truy cập tài khoản Google: chỉ dán vào GitHub Secrets, không đưa vào mã nguồn hay gửi cho người khác.
+
 ## Chạy thử trên máy
 
 ```bash

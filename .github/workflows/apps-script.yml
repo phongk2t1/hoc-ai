@@ -1,0 +1,49 @@
+name: Deploy Apps Script
+
+# Tự đẩy apps-script/Code.gs lên dự án HOCAI và cập nhật lần triển khai Web App
+# (giữ nguyên URL /exec) mỗi khi thư mục apps-script/ thay đổi trên nhánh main.
+# Cần thiết lập một lần: secret CLASPRC_JSON (xem README, mục "Tự động triển khai Apps Script").
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps-script/**']
+  workflow_dispatch:
+
+env:
+  SCRIPT_ID: 1ocb3efIkjoyDCAXyNSaCL8usJYfeYqvgjizKvC0_8ymEWLr7nfi4VJm5
+  DEPLOYMENT_ID: AKfycbyoRm1H4n-I8Q-x_00LzNJmeplfw6YFEGZdJ5nyeWnGjyNexOL2cn9Kl-f3gdEb9t0i2g
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kiểm tra secret
+        env:
+          CLASPRC: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC" ]; then
+            echo "::error::Chưa có secret CLASPRC_JSON. Xem README mục 'Tự động triển khai Apps Script'."
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Cài clasp
+        run: npm install -g @google/clasp@2.4.2
+      - name: Đăng nhập clasp
+        env:
+          CLASPRC: ${{ secrets.CLASPRC_JSON }}
+        run: printf '%s' "$CLASPRC" > ~/.clasprc.json
+      - name: Đẩy mã và cập nhật triển khai
+        working-directory: apps-script
+        run: |
+          printf '{"scriptId":"%s","rootDir":"."}' "$SCRIPT_ID" > .clasp.json
+          clasp push -f
+          clasp deploy -i "$DEPLOYMENT_ID" -d "GitHub ${GITHUB_SHA::7}"
+      - name: Kiểm tra API
+        run: |
+          sleep 5
+          curl -sL "https://script.google.com/macros/s/$DEPLOYMENT_ID/exec" | tee /tmp/ping.json
+          grep -q '"ok":true' /tmp/ping.json
