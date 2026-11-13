@@ -54,7 +54,8 @@ const API = {
   getAdminData:      (a) => getAdminData(a[0]),
   getMasterMatrix:   (a) => getMasterMatrix(a[0]),
   saveVideoAdmin:    (a) => saveVideoAdmin(a[0], a[1]),
-  deleteVideoAdmin:  (a) => deleteVideoAdmin(a[0], a[1])
+  deleteVideoAdmin:  (a) => deleteVideoAdmin(a[0], a[1]),
+  adminUpdateUser:   (a) => adminUpdateUser(a[0], a[1], a[2])
 };
 
 /** Giao diện gửi POST text/plain (tránh CORS preflight): { action, args: [...] } */
@@ -578,6 +579,25 @@ function saveVideoAdmin(token, video) {
   const newId = 'VID' + String(max + 1).padStart(3, '0');
   sheet.appendRow([newId, String(video.category || ''), title, ytKey, title, Number(video.order) || data.length, true, true]);
   return { id: newId, created: true };
+}
+
+/** Quản trị viên sửa họ tên, đơn vị, email của một học viên (theo số điện thoại). */
+function adminUpdateUser(token, phoneInput, data) {
+  adminSession_(token);
+  const phone = formatPhone(phoneInput);
+  data = data || {};
+  const fullName = String(data.fullName || '').trim().slice(0, 100);
+  const unit = String(data.unit || '').trim().slice(0, 200);
+  const email = String(data.email || '').trim().slice(0, 100);
+  if (!fullName || !unit) throw apiError_('Vui lòng điền họ tên và đơn vị công tác.', 'BAD_INPUT');
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw apiError_('Email không hợp lệ.', 'BAD_INPUT');
+  const lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    const u = findUser_(phone);
+    if (!u) throw apiError_('Không tìm thấy học viên có số điện thoại ' + phone + '.', 'NOT_FOUND');
+    getDb().getSheetByName('Users').getRange(u.row, 2, 1, 3).setValues([[fullName, unit, email]]);
+  } finally { lock.releaseLock(); }
+  return { phone: phone, fullName: fullName, unit: unit, email: email };
 }
 
 function deleteVideoAdmin(token, videoId) {

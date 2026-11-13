@@ -744,12 +744,54 @@ async function openAdmin(keepOpen) {
   try {
     adminCache = await api('getAdminData', token);
     renderAdminResults();
-    $('adminUserCount').textContent = adminCache.users.length + ' học viên đã đăng ký';
-    $('adminUserBody').innerHTML = adminCache.users.map(u =>
-      '<tr><td><b>' + esc(u.fullName) + '</b></td><td>' + esc(u.phone) + '</td><td>' + esc(u.unit) + '</td><td>' + esc(u.email) + '</td><td>' + esc(u.registerDate) + '</td><td>' + esc(u.totalStudyTime) + '</td></tr>').join('');
+    renderAdminUsers();
     renderAdminVideos(adminCache.videos);
     if (!keepOpen) { adminTab('results'); openDialog('adminDialog'); }
   } catch (e) { toast(e.message, true); }
+}
+
+function renderAdminUsers(flashPhone) {
+  if (!adminCache) return;
+  const f = ($('userFilter').value || '').toLowerCase().trim();
+  const rows = adminCache.users.filter(u => !f || (u.fullName + ' ' + u.phone + ' ' + u.unit + ' ' + u.email).toLowerCase().includes(f));
+  $('adminUserCount').textContent = (f ? rows.length + ' / ' : '') + adminCache.users.length + ' học viên đã đăng ký';
+  const tb = $('adminUserBody');
+  tb.innerHTML = '';
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="muted">Không có học viên phù hợp.</td></tr>'; return; }
+  rows.forEach(u => {
+    const tr = document.createElement('tr');
+    if (u.phone === flashPhone) tr.className = 'row-flash';
+    tr.innerHTML = '<td><b>' + esc(u.fullName) + '</b></td><td>' + esc(u.phone) + '</td><td>' + esc(u.unit) + '</td><td>' + esc(u.email) + '</td><td>' + esc(u.registerDate) + '</td><td>' + esc(u.totalStudyTime) + '</td><td><div class="row-actions"></div></td>';
+    tr.querySelector('.row-actions').appendChild(btnEl('Sửa thông tin', 'btn btn-quiet btn-sm', () => openUserEdit(u)));
+    tb.appendChild(tr);
+  });
+}
+
+function openUserEdit(u) {
+  $('uePhone').value = u.phone; $('ueName').value = u.fullName; $('ueUnit').value = u.unit; $('ueEmail').value = u.email || '';
+  $('userEditForm').hidden = false;
+  $('userEditForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => $('ueName').focus(), 200);
+}
+
+function closeUserEdit() { $('userEditForm').hidden = true; }
+
+async function saveAdminUser() {
+  const phone = $('uePhone').value;
+  const data = { fullName: $('ueName').value.trim(), unit: $('ueUnit').value.trim(), email: $('ueEmail').value.trim() };
+  if (!data.fullName || !data.unit) { toast('Điền họ tên và đơn vị công tác.', true); return; }
+  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { toast('Email không hợp lệ.', true); $('ueEmail').focus(); return; }
+  await withBusy('btnSaveUser', 'Đang lưu', async () => {
+    let r;
+    try { r = await api('adminUpdateUser', token, phone, data); }
+    catch (e) { if (e.code === 'BAD_ACTION') throw new Error('Máy chủ chưa được cập nhật chức năng này.'); throw e; }
+    const u = adminCache.users.find(x => x.phone === r.phone);
+    if (u) Object.assign(u, { fullName: r.fullName, unit: r.unit, email: r.email });
+    if (currentUser && currentUser.phone === r.phone) { Object.assign(currentUser, { fullName: r.fullName, unit: r.unit, email: r.email }); renderUserChip(); }
+    closeUserEdit();
+    renderAdminUsers(r.phone);
+    toast('Đã lưu thông tin của ' + r.fullName + '.');
+  });
 }
 
 function adminTab(name) {

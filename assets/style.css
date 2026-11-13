@@ -405,6 +405,16 @@ code { font-size: 13px; background: var(--paper); padding: 2px 6px; border-radiu
 .video-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .video-form-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .editing-note { font-size: 14px; color: var(--ink-2); }
+.user-edit { border: 1px solid var(--blue); background: var(--blue-soft); border-radius: 16px; padding: 18px; margin-bottom: 18px; }
+.user-edit h3 { font-size: 16px; margin-bottom: 12px; }
+.user-edit-grid { display: grid; grid-template-columns: 160px 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.user-edit label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.user-edit input { height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 15px; }
+.user-edit input[readonly] { background: var(--paper); color: var(--ink-2); }
+.user-edit input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(31, 86, 224, .15); }
+.user-tools { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+.user-tools .filter { margin-bottom: 10px; }
+tr.row-flash td { background: var(--green-soft) !important; }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
 /* ---------- Trang riêng: đăng nhập, đăng ký, thi hết môn ---------- */
@@ -474,6 +484,7 @@ dialog.sheet-fallback[open] { position: fixed; inset: 0; margin: auto; z-index: 
   .path { position: static; max-height: none; }
   .path-list { max-height: none; overflow: visible; }
   .video-form { grid-template-columns: 1fr 1fr; }
+  .user-edit-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
   .brand-text span { display: none; }
@@ -499,6 +510,7 @@ dialog.sheet-fallback[open] { position: fixed; inset: 0; margin: auto; z-index: 
   .sheet-foot { padding: 12px 16px max(12px, env(safe-area-inset-bottom)); }
   .admin-bar { padding: 10px 16px; }
   .video-form { grid-template-columns: 1fr; }
+  .user-edit-grid { grid-template-columns: 1fr; }
   .exam-score { font-size: 32px; }
   .player-controls { gap: 4px; padding: 20px 8px 6px; }
   .ctl-speed, #ctlDur { display: none; }

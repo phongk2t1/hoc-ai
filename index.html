@@ -305,9 +305,25 @@
         </table></div>
       </div>
       <div id="tab-users" class="tab-panel" hidden>
-        <p id="adminUserCount" class="muted"></p>
+        <form id="userEditForm" class="user-edit" hidden onsubmit="event.preventDefault();saveAdminUser()">
+          <h3>Sửa thông tin học viên</h3>
+          <div class="user-edit-grid">
+            <label>Số điện thoại<input type="tel" id="uePhone" readonly></label>
+            <label>Họ và tên<input type="text" id="ueName" maxlength="100" required></label>
+            <label>Đơn vị công tác<input type="text" id="ueUnit" maxlength="200" required></label>
+            <label>Email<input type="email" id="ueEmail" maxlength="100"></label>
+          </div>
+          <div class="video-form-actions">
+            <button type="submit" class="btn btn-primary" id="btnSaveUser">Lưu lại thay đổi</button>
+            <button type="button" class="btn btn-quiet" onclick="closeUserEdit()">Huỷ</button>
+          </div>
+        </form>
+        <div class="user-tools">
+          <input id="userFilter" class="filter" type="search" placeholder="Tìm theo tên, số điện thoại, đơn vị" oninput="renderAdminUsers()">
+          <p id="adminUserCount" class="muted"></p>
+        </div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Họ tên</th><th>Số điện thoại</th><th>Đơn vị</th><th>Email</th><th>Ngày đăng ký</th><th>Thời gian học (phút)</th></tr></thead>
+          <thead><tr><th>Họ tên</th><th>Số điện thoại</th><th>Đơn vị</th><th>Email</th><th>Ngày đăng ký</th><th>Thời gian học (phút)</th><th></th></tr></thead>
           <tbody id="adminUserBody"></tbody>
         </table></div>
       </div>
