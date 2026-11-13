@@ -91,6 +91,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('hashchange', route);
   window.addEventListener('beforeunload', e => { if (currentExam) { e.preventDefault(); e.returnValue = ''; } });
 
+  checkForUpdate();
   route(); // hiện ngay trang theo địa chỉ, không chờ máy chủ
   if (!apiConfigured()) { $('apiWarn').hidden = false; $('pathList').innerHTML = '<li class="path-empty">Chưa cấu hình máy chủ.</li>'; authReady = true; route(); return; }
 
@@ -115,6 +116,28 @@ window.addEventListener('DOMContentLoaded', async () => {
   authReady = true;
   route();
 });
+
+/* ================= TỰ CẬP NHẬT PHIÊN BẢN ================= */
+
+/** So phiên bản đang chạy với bản mới nhất trên GitHub Pages; khác thì tải lại để bỏ bộ nhớ đệm cũ. */
+async function checkForUpdate() {
+  const cur = window.APP_VERSION;
+  if (!cur || cur === 'dev') return;
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = (await r.json()).version;
+    if (!v || v === cur) return;
+    const key = 'hocai_reloaded_' + v;
+    if (sessionStorage.getItem(key)) return; // tránh tải lại lặp
+    sessionStorage.setItem(key, '1');
+    if (currentExam) { toast('Đã có phiên bản mới của trang. Hãy tải lại sau khi nộp bài.'); return; }
+    const url = new URL(location.href);
+    url.searchParams.set('v', v);
+    location.replace(url.toString());
+  } catch (e) { /* bỏ qua */ }
+}
+setInterval(checkForUpdate, 5 * 60 * 1000);
 
 /* ================= ĐIỀU HƯỚNG TRANG ================= */
 
@@ -762,7 +785,9 @@ function renderAdminUsers(flashPhone) {
     const tr = document.createElement('tr');
     if (u.phone === flashPhone) tr.className = 'row-flash';
     tr.innerHTML = '<td><b>' + esc(u.fullName) + '</b></td><td>' + esc(u.phone) + '</td><td>' + esc(u.unit) + '</td><td>' + esc(u.email) + '</td><td>' + esc(u.registerDate) + '</td><td>' + esc(u.totalStudyTime) + '</td><td><div class="row-actions"></div></td>';
-    tr.querySelector('.row-actions').appendChild(btnEl('Sửa thông tin', 'btn btn-quiet btn-sm', () => openUserEdit(u)));
+    const act = tr.querySelector('.row-actions');
+    act.appendChild(btnEl('Sửa thông tin', 'btn btn-quiet btn-sm', () => openUserEdit(u)));
+    if (!(currentUser && u.phone === currentUser.phone)) act.appendChild(btnEl('Xoá', 'btn btn-danger btn-sm', () => deleteAdminUser(u)));
     tb.appendChild(tr);
   });
 }
@@ -772,6 +797,19 @@ function openUserEdit(u) {
   $('userEditForm').hidden = false;
   $('userEditForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
   setTimeout(() => $('ueName').focus(), 200);
+}
+
+async function deleteAdminUser(u) {
+  if (!confirm('Xoá học viên "' + u.fullName + '" (' + u.phone + ')?\n\nHồ sơ và tiến độ học sẽ bị xoá vĩnh viễn. Nhật ký thi vẫn được giữ lại.')) return;
+  try {
+    await api('adminDeleteUser', token, u.phone);
+    adminCache.users = adminCache.users.filter(x => x.phone !== u.phone);
+    if ($('uePhone').value === u.phone) closeUserEdit();
+    renderAdminUsers();
+    toast('Đã xoá học viên ' + u.fullName + '.');
+  } catch (e) {
+    toast(e.code === 'BAD_ACTION' ? 'Máy chủ chưa được cập nhật chức năng xoá.' : e.message, true);
+  }
 }
 
 function closeUserEdit() { $('userEditForm').hidden = true; }

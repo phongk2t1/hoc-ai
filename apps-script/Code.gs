@@ -55,7 +55,8 @@ const API = {
   getMasterMatrix:   (a) => getMasterMatrix(a[0]),
   saveVideoAdmin:    (a) => saveVideoAdmin(a[0], a[1]),
   deleteVideoAdmin:  (a) => deleteVideoAdmin(a[0], a[1]),
-  adminUpdateUser:   (a) => adminUpdateUser(a[0], a[1], a[2])
+  adminUpdateUser:   (a) => adminUpdateUser(a[0], a[1], a[2]),
+  adminDeleteUser:   (a) => adminDeleteUser(a[0], a[1])
 };
 
 /** Giao diện gửi POST text/plain (tránh CORS preflight): { action, args: [...] } */
@@ -598,6 +599,31 @@ function adminUpdateUser(token, phoneInput, data) {
     getDb().getSheetByName('Users').getRange(u.row, 2, 1, 3).setValues([[fullName, unit, email]]);
   } finally { lock.releaseLock(); }
   return { phone: phone, fullName: fullName, unit: unit, email: email };
+}
+
+/**
+ * Quản trị viên xoá học viên: xoá dòng trong Users và tiến độ học trong Progress.
+ * Nhật ký thi (QuizResults) được giữ lại để đối chiếu về sau.
+ */
+function adminDeleteUser(token, phoneInput) {
+  adminSession_(token);
+  const phone = formatPhone(phoneInput);
+  if (!/^0\d{9}$/.test(phone)) throw apiError_('Số điện thoại không hợp lệ.', 'BAD_INPUT');
+  if (checkIsAdmin(phone)) throw apiError_('Không thể xoá tài khoản quản trị viên.', 'FORBIDDEN');
+  const lock = LockService.getScriptLock(); lock.waitLock(15000);
+  let removedProgress = 0;
+  try {
+    const db = getDb();
+    const u = findUser_(phone);
+    if (!u) throw apiError_('Không tìm thấy học viên có số điện thoại ' + phone + '.', 'NOT_FOUND');
+    db.getSheetByName('Users').deleteRow(u.row);
+    const pSheet = db.getSheetByName('Progress');
+    const pData = pSheet.getDataRange().getValues();
+    for (let i = pData.length - 1; i >= 1; i--) {
+      if (formatPhone(pData[i][0]) === phone) { pSheet.deleteRow(i + 1); removedProgress++; }
+    }
+  } finally { lock.releaseLock(); }
+  return { phone: phone, removedProgress: removedProgress };
 }
 
 function deleteVideoAdmin(token, videoId) {
