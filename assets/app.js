@@ -87,8 +87,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     img.src = CFG.TEACHER_IMAGE_URL;
   }
   if (CFG.CONTACT_EMAIL) { $('contactLink').href = 'mailto:' + CFG.CONTACT_EMAIL; $('contactLink').textContent = CFG.CONTACT_EMAIL; }
-  document.querySelectorAll('dialog').forEach(d => d.addEventListener('click', e => { if (e.target === d && d.id !== 'examDialog') closeDialog(d.id); }));
-  $('examDialog').addEventListener('cancel', e => { if (currentExam && !confirm('Đóng bài thi? Các câu đã chọn sẽ không được lưu.')) e.preventDefault(); else currentExam = null; });
+  document.querySelectorAll('dialog').forEach(d => d.addEventListener('click', e => { if (e.target === d) closeDialog(d.id); }));
   window.addEventListener('hashchange', route);
   window.addEventListener('beforeunload', e => { if (currentExam) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -124,13 +123,16 @@ let authReady = false;
 function route() {
   const h = location.hash.replace(/\?.*$/, '');
   // Rời trang thi khi đang làm bài: hỏi lại
-  if (lastHash === '#thi-het-mon' && h !== '#thi-het-mon' && currentExam && currentExam.type === 'FINAL') {
-    if (!confirm('Rời trang thi? Bài làm chưa nộp sẽ bị mất.')) { history.replaceState(null, '', '#thi-het-mon'); return; }
+  if (currentExam && h !== lastHash && (lastHash === '#thi-het-mon' || lastHash.indexOf('#kiem-tra/') === 0)) {
+    if (!confirm('Rời trang làm bài? Bài làm chưa nộp sẽ bị mất.')) { history.replaceState(null, '', lastHash); return; }
     currentExam = null;
   }
   lastHash = h;
-  const view = h === '#dang-nhap' || h === '#dang-ky' ? 'viewAuth' : h === '#thi-het-mon' ? 'viewFinal' : 'viewHome';
-  ['viewHome', 'viewAuth', 'viewFinal'].forEach(v => { $(v).hidden = v !== view; });
+  const view = h === '#dang-nhap' || h === '#dang-ky' ? 'viewAuth' : h === '#thi-het-mon' ? 'viewFinal' : h.indexOf('#kiem-tra/') === 0 ? 'viewModule' : 'viewHome';
+  ['viewHome', 'viewAuth', 'viewFinal', 'viewModule'].forEach(v => { $(v).hidden = v !== view; });
+  $('finalBar').hidden = $('finalBar').hidden || view !== 'viewFinal';
+  if (view !== 'viewModule') $('moduleBar').hidden = true;
+  if (view !== 'viewFinal') $('finalBar').hidden = true;
   if (view !== 'viewHome' && player && typeof player.pauseVideo === 'function') { try { player.pauseVideo(); } catch (e) {} }
   window.scrollTo(0, 0);
 
@@ -145,8 +147,8 @@ function route() {
     if (!currentExam) resetFinalPage();
     if (!authReady) { const b = $('btnStartFinal'); b.disabled = true; b.textContent = 'Đang kiểm tra đăng nhập…'; return; }
     if (!currentUser) { sessionStorage.setItem(LS_RETURN, '#thi-het-mon'); location.hash = '#dang-nhap'; toast('Đăng nhập để thi hết môn.'); return; }
-  } else {
-    $('finalBar').hidden = true;
+  } else if (view === 'viewModule') {
+    openModulePage(decodeURIComponent(h.slice('#kiem-tra/'.length)));
   }
 }
 
@@ -514,26 +516,69 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 /* ================= THI TRẮC NGHIỆM ================= */
 
 const EXAM_UI = {
-  MODUL: { q: 'examQuestions', r: 'examResult', p: 'examProgress', b: 'btnSubmitExam' },
+  MODUL: { q: 'moduleQuestions', r: 'moduleResult', p: 'moduleProgress', b: 'btnSubmitModule' },
   FINAL: { q: 'finalQuestions', r: 'finalResult', p: 'finalProgress', b: 'btnSubmitFinal' }
 };
 
 function requireLogin() { if (currentUser) return true; focusLogin(); toast('Đăng nhập để làm bài kiểm tra.', true); return false; }
 
-/* Kiểm tra sau bài học: hộp thoại như cũ */
-async function startModuleExam() {
+/* Kiểm tra sau bài học: trang riêng #kiem-tra/<mã bài> */
+let moduleAllowed = '';   // mã bài được phép mở bài kiểm tra (đã xem hết video)
+let moduleVideo = null;
+
+function startModuleExam() {
   if (!requireLogin() || !currentVideo) return;
-  if (player && player.pauseVideo) player.pauseVideo();
-  currentExam = null;
-  $('examTitle').textContent = 'Kiểm tra hoàn thành bài học';
-  $('examSub').textContent = currentVideo.title;
-  $('examResult').hidden = true;
-  $('examProgress').textContent = '';
-  $('examQuestions').innerHTML = loadingHtml();
-  const b = $('btnSubmitExam'); b.hidden = false; b.disabled = false; b.textContent = 'Nộp bài';
-  openDialog('examDialog');
-  try { showExam(await api('getModuleExam', token, currentVideo.id), 'MODUL'); }
-  catch (e) { $('examQuestions').innerHTML = '<p class="notice">' + esc(e.message) + '</p>'; b.hidden = true; }
+  if (player && player.pauseVideo) { try { player.pauseVideo(); } catch (e) {} }
+  saveProgressNow(false);
+  moduleAllowed = currentVideo.id;
+  location.hash = '#kiem-tra/' + encodeURIComponent(currentVideo.id);
+}
+
+function resetModulePage() {
+  ['moduleBlocked', 'moduleResult', 'moduleAfter', 'moduleBar'].forEach(id => { $(id).hidden = true; });
+  $('moduleQuestions').innerHTML = '';
+  $('moduleProgress').textContent = '';
+}
+
+async function openModulePage(videoId) {
+  if (currentExam && currentExam.type === 'MODUL' && moduleVideo && moduleVideo.id === videoId) return; // đang làm dở
+  resetModulePage();
+  $('moduleLesson').textContent = '';
+  $('moduleSub').textContent = '';
+  if (!authReady) { $('moduleQuestions').innerHTML = '<div class="loading"><div class="spinner"></div>Đang kiểm tra đăng nhập…</div>'; return; }
+  if (!currentUser) { sessionStorage.setItem(LS_RETURN, location.hash); location.hash = '#dang-nhap'; toast('Đăng nhập để làm bài kiểm tra.'); return; }
+  if (!videoList.length) { $('moduleQuestions').innerHTML = loadingHtml(); await loadCourseVideos(); if (location.hash.indexOf('#kiem-tra/') !== 0) return; }
+  const v = videoList.find(x => x.id === videoId);
+  if (!v) { $('moduleBlocked').hidden = false; $('moduleQuestions').innerHTML = ''; $('moduleBlockedText').textContent = 'Không tìm thấy bài học này.'; return; }
+  moduleVideo = v;
+  const idx = videoList.indexOf(v);
+  $('moduleLesson').textContent = 'Bài ' + (idx + 1) + ': ' + v.title;
+  if (!(currentUser.isAdmin || v.completed || moduleAllowed === v.id)) {
+    $('moduleQuestions').innerHTML = '';
+    $('moduleBlocked').hidden = false;
+    $('moduleBlockedText').textContent = 'Bạn cần xem hết video của bài này trước khi làm bài kiểm tra.';
+    if (!currentVideo || currentVideo.id !== v.id) selectVideo(v, true);
+    return;
+  }
+  beginModuleExam();
+}
+
+async function beginModuleExam() {
+  if (!moduleVideo) return;
+  resetModulePage();
+  $('moduleQuestions').innerHTML = loadingHtml();
+  window.scrollTo(0, 0);
+  try {
+    const res = await api('getModuleExam', token, moduleVideo.id);
+    showExam(res, 'MODUL');
+    if (res.success) { $('moduleBar').hidden = false; const b = $('btnSubmitModule'); b.hidden = false; b.disabled = false; b.textContent = 'Nộp bài'; }
+  } catch (e) { $('moduleQuestions').innerHTML = '<p class="notice">' + esc(e.message) + '</p>'; }
+}
+
+function goNextLessonFromExam() {
+  const i = moduleVideo ? videoList.indexOf(moduleVideo) : -1;
+  location.hash = '';
+  if (i >= 0 && i < videoList.length - 1) setTimeout(() => selectVideo(videoList[i + 1]), 50);
 }
 
 /* Thi hết môn: trang riêng */
@@ -576,7 +621,7 @@ function showExam(res, type) {
   const need = type === 'MODUL' ? Math.min(7, Math.ceil(res.totalQuestions * 0.7)) : Math.min(20, Math.ceil(res.totalQuestions * 2 / 3));
   currentExam = { id: res.examId, type: type, questions: res.questions, need: need };
   const sub = res.totalQuestions + ' câu, đạt từ ' + need + ' câu đúng' + (type === 'FINAL' ? '. Không giới hạn thời gian.' : '.');
-  if (type === 'FINAL') $('finalSub').textContent = sub; else $('examSub').textContent = currentVideo.title + '. ' + sub;
+  if (type === 'FINAL') $('finalSub').textContent = sub; else $('moduleSub').textContent = sub;
   box.innerHTML = res.questions.map((q, qi) =>
     '<div class="question" id="box_' + type + '_' + qi + '" role="group" aria-label="Câu ' + (qi + 1) + '"><h3><span>Câu ' + (qi + 1) + '</span>' + esc(q.question) + '</h3>' +
     q.options.map((t, oi) => '<label class="option" id="lbl_' + type + '_' + qi + '_' + oi + '"><input type="radio" name="q_' + type + '_' + qi + '" value="' + oi + '"><span class="key">' +
@@ -616,13 +661,20 @@ async function submitAnswers(type) {
       (r.passed ? (t === 'FINAL' ? 'Chúc mừng, bạn đã đạt bài thi hết môn' : 'Chúc mừng, bạn đã hoàn thành bài học') : 'Chưa đạt yêu cầu') + '</h3><p>' +
       r.score + ' điểm trên thang 10. ' + (r.passed ? '' : 'Cần từ ' + r.need + ' câu đúng. ' + (t === 'FINAL' ? 'Ôn lại các bài học rồi thi lại.' : 'Xem lại video rồi làm lại bài kiểm tra.')) + '</p></div>';
 
-    if (t === 'MODUL' && currentVideo) {
-      if (r.passed) { currentVideo.completed = true; currentVideo.resumeTime = 0; }
-      else if (!currentUser.isAdmin && !currentVideo.completed) {
-        maxTimeViewed = 0;
-        if (player && player.seekTo) player.seekTo(0, true);
+    if (t === 'MODUL' && moduleVideo) {
+      const v = moduleVideo;
+      if (r.passed) { v.completed = true; v.resumeTime = 0; }
+      else if (!currentUser.isAdmin && !v.completed) {
+        moduleAllowed = '';
+        if (currentVideo === v) { maxTimeViewed = 0; if (player && player.seekTo) { try { player.seekTo(0, true); player.pauseVideo(); } catch (e) {} } }
       }
-      renderPath(); updateRing(); updateExamButton(); setWatch(0, videoDuration);
+      renderPath(); updateRing(); if (currentVideo === v) { updateExamButton(); setWatch(0, videoDuration); }
+      const last = videoList.indexOf(v) >= videoList.length - 1;
+      $('moduleAfter').hidden = false;
+      $('btnModuleNext').hidden = !r.passed || last;
+      $('btnModuleRetry').hidden = !(r.passed || currentUser.isAdmin || v.completed);
+      $('btnModuleBack').textContent = r.passed ? 'Về trang học' : 'Xem lại video';
+      setTimeout(() => { $('moduleBar').hidden = true; }, 2500);
     }
     if (t === 'FINAL') { $('finalAfter').hidden = false; setTimeout(() => { $('finalBar').hidden = true; }, 2500); }
     exam.questions.forEach((q, qi) => {
@@ -634,8 +686,7 @@ async function submitAnswers(type) {
       document.querySelectorAll('input[name="q_' + t + '_' + qi + '"]').forEach(i => i.disabled = true);
       if (fb.explanation) { const ex = $('exp_' + t + '_' + qi); ex.hidden = false; ex.innerHTML = '<b>Giải thích:</b> ' + esc(fb.explanation); }
     });
-    if (t === 'FINAL') window.scrollTo({ top: 0, behavior: 'smooth' });
-    else document.querySelector('#examDialog .exam-body').scrollTop = 0;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 }
 
@@ -754,12 +805,10 @@ function openDialog(id) {
   d.classList.add('sheet-fallback'); d.setAttribute('open', '');
   let bd = $('dialogBackdrop');
   if (!bd) { bd = document.createElement('div'); bd.id = 'dialogBackdrop'; bd.className = 'dialog-backdrop'; document.body.appendChild(bd); }
-  bd.hidden = false; bd.onclick = () => { if (id !== 'examDialog') closeDialog(id); };
+  bd.hidden = false; bd.onclick = () => closeDialog(id);
 }
 function closeDialog(id) {
   const d = $(id);
-  if (id === 'examDialog' && currentExam && !confirm('Đóng bài thi? Các câu đã chọn sẽ không được lưu.')) return;
-  if (id === 'examDialog') currentExam = null;
   if (typeof d.close === 'function') d.close(); else d.removeAttribute('open');
   const bd = $('dialogBackdrop'); if (bd) bd.hidden = true;
 }

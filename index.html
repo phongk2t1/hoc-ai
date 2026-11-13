@@ -167,6 +167,31 @@
     </div>
   </main>
 
+  <!-- Trang kiểm tra sau bài học -->
+  <main id="viewModule" class="page page-exam" hidden>
+    <div class="exam-page">
+      <a class="back-link" href="#">Quay lại bài học</a>
+      <h1>Kiểm tra hoàn thành bài học</h1>
+      <p id="moduleLesson" class="module-lesson"></p>
+      <p id="moduleSub" class="page-lead"></p>
+      <div id="moduleBlocked" class="final-intro" hidden>
+        <p id="moduleBlockedText" class="page-lead"></p>
+        <a class="btn btn-primary" href="#">Quay lại xem video</a>
+      </div>
+      <div id="moduleResult" class="exam-result" hidden></div>
+      <div id="moduleQuestions"></div>
+      <div id="moduleAfter" class="final-after" hidden>
+        <button id="btnModuleRetry" class="btn btn-quiet" type="button" onclick="beginModuleExam()">Làm lại với đề mới</button>
+        <button id="btnModuleNext" class="btn btn-primary" type="button" onclick="goNextLessonFromExam()">Học bài tiếp theo</button>
+        <a id="btnModuleBack" class="btn btn-quiet" href="#">Về trang học</a>
+      </div>
+    </div>
+    <div id="moduleBar" class="exam-bar" hidden>
+      <span id="moduleProgress" class="exam-progress"></span>
+      <button id="btnSubmitModule" class="btn btn-primary" type="button" onclick="submitAnswers('MODUL')">Nộp bài</button>
+    </div>
+  </main>
+
   <!-- Trang thi hết môn -->
   <main id="viewFinal" class="page page-exam" hidden>
     <div class="exam-page">
@@ -205,25 +230,6 @@
       <span>© 2026 Nguyễn Phong</span>
     </div>
   </footer>
-
-  <!-- Bài thi -->
-  <dialog id="examDialog" class="sheet sheet-lg" aria-labelledby="examTitle">
-    <div class="sheet-head exam-head">
-      <div>
-        <h2 id="examTitle" tabindex="-1" autofocus>Bài kiểm tra</h2>
-        <p id="examSub" class="sheet-sub"></p>
-      </div>
-      <button class="icon-btn" type="button" aria-label="Đóng" onclick="closeDialog('examDialog')">✕</button>
-    </div>
-    <div class="sheet-body exam-body">
-      <div id="examResult" class="exam-result" hidden></div>
-      <div id="examQuestions"></div>
-    </div>
-    <div class="sheet-foot">
-      <span id="examProgress" class="exam-progress"></span>
-      <button type="button" class="btn btn-primary" id="btnSubmitExam" onclick="submitAnswers('MODUL')">Nộp bài</button>
-    </div>
-  </dialog>
 
   <!-- Bảng xếp hạng -->
   <dialog id="leaderboardDialog" class="sheet sheet-sm" aria-labelledby="lbTitle">

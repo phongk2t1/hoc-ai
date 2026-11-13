@@ -350,10 +350,10 @@ input[type=search] { -webkit-appearance: none; appearance: none; }
 .option:has(input:focus-visible) { outline: 3px solid var(--gold); outline-offset: 2px; }
 .question.is-correct { border-color: #9ED9C1; }
 .question.is-wrong { border-color: #F0B5B4; }
-.option.opt-correct { border-color: var(--green); background: var(--green-soft); }
-.option.opt-correct .key { background: var(--green); border-color: var(--green); color: #fff; }
-.option.opt-wrong { border-color: var(--red); background: var(--red-soft); text-decoration: line-through; text-decoration-color: rgba(200, 50, 47, .5); }
-.option.opt-wrong .key { background: var(--red); border-color: var(--red); color: #fff; }
+.option.opt-correct, .option.opt-correct:has(input:checked) { border-color: var(--green); background: var(--green-soft); }
+.option.opt-correct .key, .option.opt-correct:has(input:checked) .key { background: var(--green); border-color: var(--green); color: #fff; }
+.option.opt-wrong, .option.opt-wrong:has(input:checked) { border-color: var(--red); background: var(--red-soft); text-decoration: line-through; text-decoration-color: rgba(200, 50, 47, .5); }
+.option.opt-wrong .key, .option.opt-wrong:has(input:checked) .key { background: var(--red); border-color: var(--red); color: #fff; }
 .explain { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--paper); font-size: 14px; color: var(--ink-2); }
 .explain b { color: var(--ink); }
 .exam-result { border-radius: 16px; padding: 20px; margin-bottom: 18px; display: flex; gap: 18px; align-items: center; }
@@ -427,7 +427,9 @@ code { font-size: 13px; background: var(--paper); padding: 2px 6px; border-radiu
 .rules { margin: 0 0 22px; padding-left: 20px; color: var(--ink-2); }
 .rules li { margin: 6px 0; }
 .rules b { color: var(--ink); }
-#finalResult { margin-top: 20px; }
+#finalResult, #moduleResult { margin-top: 20px; }
+#moduleQuestions { margin-top: 20px; }
+.module-lesson { font-size: 17px; font-weight: 600; color: var(--blue); margin-bottom: 4px; }
 #finalQuestions { margin-top: 20px; }
 .final-after { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .exam-bar {
